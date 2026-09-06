@@ -357,7 +357,7 @@ def scrape_tournaments():
         }
         try:
             d = soup(f"/e/{eid}/x")
-            body = txt(d.select_one("div.content") or d.body)
+            body = txt(d.select_one("div.desc"))          # רק גוף ההודעה, בלי תפריטי האתר
             m = re.search(r"מקום התחרות:\s*([^\n]+?)(?:\s{2,}|התחרות נערכת|מנהל התחרות|$)", body)
             if m:
                 t["venue"] = m.group(1).strip(" .")[:120]
@@ -365,11 +365,11 @@ def scrape_tournaments():
             if m:
                 t["registrationUntil"] = m.group(1).replace("/", ".") + (f" {m.group(2)}" if m.group(2) else "")
             cats, seen = [], set()
-            for li in d.select("a"):
+            for li in d.select("div.event_menu a"):
                 name = txt(li)
-                if not name.endswith("הרשמה"):
+                if " - הרשמה" not in name:               # רק שורות קטגוריה, לא לשוניות האירוע
                     continue
-                name = re.sub(r"\s*-\s*הרשמה$", "", name).strip()
+                name = name.split(" - הרשמה")[0].strip()
                 if name and name not in seen:
                     seen.add(name)
                     cats.append(name)
