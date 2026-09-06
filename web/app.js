@@ -86,6 +86,7 @@
       colData(await db.collection('announcements').where('publishAt', '<=', new Date().toISOString()).orderBy('publishAt', 'desc').limit(n).get())),
     player: id => cached('player:' + id, 3e5, async () => docData(await db.doc('players/' + id).get())),
     attendance: id => cached('att:' + id, 3e5, async () => docData(await db.doc('attendance/' + id).get())),
+    syncStatus: () => cached('syncStatus', 6e4, async () => docData(await db.doc('meta/sync').get())),
     tournaments: () => cached('tournaments', 6e5, async () => colData(await db.collection('tttm/tournaments/items').get())),
     tttmPlayer: tid => cached('tp:' + tid, 3e5, async () => tid ? docData(await db.doc('tttm/players/items/' + tid).get()) : null),
   };
@@ -270,6 +271,7 @@
         ${m.isHome ? '· <b>בית</b>' : '· חוץ'}${m.drawName ? ' · ' + esc(m.drawName) : ''}</div>
       ${!played && opts.remind !== false ? `<button class="btn btn-secondary btn-sm" style="margin:8px auto 0;display:flex" data-remind="match:${esc(m.matchId)}" data-label="${esc(m.homeName)} נגד ${esc(m.awayName)}"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-bell"/></svg> הזכר לי</button>` : ''}`;
   }
+  const icoSvg = n => `<svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-${n}"/></svg>`;
   const empty = (ico, text) => `<div class="empty"><div class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-${ico}"/></svg></div>${esc(text)}</div>`;
   const dayList = days => (days || []).map(d => typeof d === 'number' ? HEB_DAYS[d] : d).join(', ');
 
@@ -641,13 +643,47 @@
   ACTIONS.delAnn = async el => { if (!confirm('למחוק את ההודעה?')) return; await db.doc('announcements/' + el.dataset.id).delete(); invalidate('ann'); toast('נמחק'); route(); };
 
   // ---------------------------------------------------------------- admin
-  SCREENS.admin = async (tab = 'access') => {
-    const seg = `<div class="seg">${[['access', 'גישות'], ['players', 'שחקנים'], ['groups', 'קבוצות'], ['coaches', 'מאמנים'], ['venues', 'אולמות']].map(([k, t]) => `<button data-seg="${k}" class="${k === tab ? 'active' : ''}">${t}</button>`).join('')}</div>`;
+  SCREENS.admin = async (tab = 'sync') => {
+    const seg = `<div class="seg">${[['sync', 'סנכרון'], ['access', 'גישות'], ['players', 'שחקנים'], ['groups', 'קבוצות'], ['coaches', 'מאמנים'], ['venues', 'אולמות']].map(([k, t]) => `<button data-seg="${k}" class="${k === tab ? 'active' : ''}">${t}</button>`).join('')}</div>`;
     const [users, players, groups, coaches, venues] = await Promise.all([colData(await db.collection('users').get()), colData(await db.collection('players').get()), D.groups(), D.coaches(), D.venues()]);
     S.cache.set('adminUsers', { t: Date.now(), v: users }); S.cache.set('adminPlayers', { t: Date.now(), v: players });
     const pname = id => players.find(p => p.id === id)?.name || id;
     const playerOpts = sel => `<option value="">— חבר מועדון (ללא שחקן) —</option>` + players.sort((a, b) => a.name.localeCompare(b.name, 'he')).map(p => `<option value="${p.id}" ${sel === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+    const sync = await D.syncStatus().catch(() => null);
+    const ago = iso => {
+      if (!iso) return '—';
+      const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+      if (mins < 2) return 'ממש עכשיו';
+      if (mins < 60) return `לפני ${mins} דקות`;
+      const h = Math.round(mins / 60);
+      return h < 24 ? `לפני ${h} שעות` : `לפני ${Math.round(h / 24)} ימים`;
+    };
+    const warnRow = (label, arr, hint) => !arr || !arr.length ? '' :
+      `<li><div class="row spread"><b>${esc(label)}</b><span class="chip orange">${arr.length}</span></div>
+        <div class="small muted">${esc(arr.slice(0, 12).map(x => /^972\d{9}$/.test(String(x)) ? fmtPhone(x) : x).join(' · '))}${arr.length > 12 ? ' …' : ''}</div>
+        ${hint ? `<div class="small muted">${esc(hint)}</div>` : ''}</li>`;
+    const c = (sync && sync.counts) || {}, w = (sync && sync.warnings) || {};
+    const gap = (c.attendanceUsers != null && c.withAccess != null) ? (w.peopleWithoutAccess || []).length : null;
     const panes = {
+      sync: !sync ? '<div class="card"><p class="muted">דוח הסנכרון ייווצר בהרצה הבאה של הסנכרון (כל 15 דקות).</p></div>' :
+        `<div class="card"><div class="card-title"><span class="ico">${icoSvg('check')}</span>מצב הסנכרון מול אפליקציית הנוכחות</div>
+          <div class="row spread"><div><div class="big-number" style="font-size:1.3rem">${esc(ago(sync.lastRun))}</div><div class="small muted">סנכרון אחרון</div></div>
+            <span class="chip ${gap === 0 ? 'green' : 'orange'}">${gap === 0 ? 'הכל מסונכרן' : `${gap} אנשים בלי גישה`}</span></div>
+          <div class="stat-grid" style="margin-top:14px">
+            <div><div class="big-number">${c.players ?? '—'}</div><div class="lbl">שחקנים</div></div>
+            <div><div class="big-number">${c.groups ?? '—'}</div><div class="lbl">קבוצות</div></div>
+            <div><div class="big-number">${c.withAccess ?? '—'}</div><div class="lbl">עם גישה לפורטל</div></div>
+          </div>
+          <p class="small muted" style="margin-top:12px">הסנכרון רץ אוטומטית כל 15 דקות. כל מי שרשום באפליקציית הנוכחות עם מספר טלפון מקבל גישה לפורטל.</p></div>
+        ${Object.values(w).some(a => (a || []).length) ? `<div class="card"><div class="card-title"><span class="ico">${icoSvg('megaphone')}</span>דברים שדורשים טיפול באפליקציית הנוכחות</div>
+          <ul class="list">
+            ${warnRow('אנשים בלי גישה לפורטל', w.peopleWithoutAccess, 'המספר קיים בנוכחות אך עדיין לא נפתח לו משתמש')}
+            ${warnRow('שחקנים בלי מספר טלפון', w.playersWithoutPhone, 'בלי מספר אי אפשר לפתוח להם גישה')}
+            ${warnRow('שחקנים בלי קבוצה', w.playersWithoutGroup, '')}
+            ${warnRow('קבוצות בלי אולם', w.groupsWithoutVenue, '')}
+            ${warnRow('קבוצות בלי מאמן משויך', w.groupsWithoutCoach, '')}
+            ${warnRow('משתמשי צוות בלי טלפון', w.staffWithoutPhone, '')}
+          </ul></div>` : '<div class="card"><p class="muted">אין אזהרות — כל הנתונים תקינים.</p></div>'}`,
       access: `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-edit"/></svg></span>הוספת מספר</div><form data-form="addUser" class="form-grid">
           <label>מספר טלפון</label><input name="phone" type="tel" inputmode="tel" required placeholder="050-1234567" style="direction:ltr">
           <label>שם</label><input name="name" required placeholder="שם מלא">
