@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '30 20 * * *'   # 23:30 שעון ישראל, אחרי כל האימונים
   workflow_dispatch:
+    inputs:
+      auto_add_phones:
+        description: 'לייבא גם את מספרי הטלפון ולפתוח משתמשים בפורטל'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -25,4 +30,6 @@ jobs:
         env:
           PORTAL_SA: /tmp/portal-sa.json
           ATTENDANCE_SA: /tmp/attendance-sa.json
+          # בהרצה ידנית לפי הבחירה; בהרצה המתוזמנת תמיד מייבא טלפונים חדשים
+          AUTO_ADD_PHONES: ${{ (github.event_name == 'schedule' || inputs.auto_add_phones) && '1' || '0' }}
         run: python sync/sync_attendance.py
