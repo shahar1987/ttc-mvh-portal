@@ -1,0 +1,90 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() { return request.auth != null; }
+    function role() { return signedIn() ? request.auth.token.role : null; }
+    function isAdmin() { return role() == 'admin'; }
+    function isCoach() { return role() == 'coach' || isAdmin(); }
+    function canPublish() { return isAdmin() || (signedIn() && request.auth.token.canPublish == true); }
+    // uid == normalized phone (972501234567) — minted by the login Worker
+    function myPhone() { return request.auth.uid; }
+
+    // ---------- users (access list) ----------
+    match /users/{phone} {
+      allow read: if signedIn() && (phone == myPhone() || isAdmin());
+      allow write: if isAdmin();   // lastLogin/loginCount are written by the Worker (service account)
+    }
+
+    // ---------- players ----------
+    match /players/{playerId} {
+      allow read: if signedIn() && (
+        isCoach() ||
+        (resource.data.phones != null && myPhone() in resource.data.phones)
+      );
+      allow write: if isAdmin();
+    }
+
+    // ---------- attendance (mirrored from the attendance app) ----------
+    match /attendance/{playerId} {
+      allow read: if signedIn() && (
+        isCoach() ||
+        (myPhone() in get(/databases/$(database)/documents/players/$(playerId)).data.phones)
+      );
+      allow write: if false;      // written only by the sync job (service account)
+      match /sessions/{date} {
+        allow read: if signedIn() && (
+          isCoach() ||
+          (myPhone() in get(/databases/$(database)/documents/players/$(playerId)).data.phones)
+        );
+        allow write: if false;
+      }
+    }
+
+    // ---------- TTTM (scraper output) ----------
+    match /tttm/{doc} {
+      allow read: if signedIn();
+      allow write: if false;      // scraper only
+      match /{sub=**} { allow read: if signedIn(); allow write: if false; }
+    }
+
+    // ---------- club content ----------
+    match /announcements/{id} {
+      allow read: if signedIn();
+      allow create: if canPublish()
+        && request.resource.data.authorId == myPhone()
+        && (isAdmin() || request.resource.data.audience == 'group');
+      allow update, delete: if isAdmin() || (canPublish() && resource.data.authorId == myPhone());
+    }
+    match /groups/{id}   { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /coaches/{id}  { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /venues/{id}   { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /settings/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
+
+    // ---------- dashboard counters (aggregated per day by the Worker) ----------
+    match /logins/{date} { allow read: if isAdmin(); allow write: if false; }
+
+    // ---------- email reminders ----------
+    match /reminders/{id} {
+      allow read: if isAdmin();
+      allow create: if signedIn()
+        && request.resource.data.email is string
+        && request.resource.data.email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
+        && request.resource.data.ownerUid == myPhone();
+      allow delete: if isAdmin() || (signedIn() && resource.data.ownerUid == myPhone());
+      // הסרה מתזכורות מקישור במייל: מותר רק לסמן unsubscribed=true
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unsubscribed'])
+        && request.resource.data.unsubscribed == true;
+    }
+
+    // ---------- push tokens ----------
+    match /pushTokens/{token} {
+      allow read: if isAdmin();
+      allow write: if signedIn() && request.resource.data.uid == myPhone();
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}

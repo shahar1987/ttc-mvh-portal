@@ -1,0 +1,11 @@
+name = "ttc-mvh-login"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+# הכתובת של הפורטל (GitHub Pages). אפשר כמה, מופרדות בפסיק.
+ALLOWED_ORIGIN = "https://shahar1987.github.io,http://localhost:8080"
+PORTAL_URL = "https://shahar1987.github.io/ttc-mvh-portal/"
+
+# ה-secret מוגדר פעם אחת מהטרמינל (לא נשמר בקובץ):
+#   npx wrangler secret put FIREBASE_SA   <- הדבק את כל תוכן קובץ ה-service-account.json

@@ -1,0 +1,6 @@
+*service-account*.json
+sa.json
+snapshot.json
+__pycache__/
+.wrangler/
+node_modules/

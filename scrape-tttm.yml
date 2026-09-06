@@ -1,0 +1,49 @@
+name: TTTM scraper
+
+on:
+  schedule:
+    # ראשון ורביעי 02:00 שעון ישראל = 23:00 UTC בשבת/שלישי (קיץ) — GitHub מריץ ב-UTC
+    - cron: '0 23 * * 6,2'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'רק להדפיס, בלי לכתוב ל-Firestore'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: scraper/requirements.txt
+      - run: pip install -r scraper/requirements.txt
+
+      - name: Write service account
+        if: ${{ !inputs.dry_run }}
+        run: echo '${{ secrets.FIREBASE_SA }}' > /tmp/sa.json
+
+      - name: Run scraper
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            python scraper/tttm_scraper.py --dry-run --out snapshot.json
+          else
+            python scraper/tttm_scraper.py --out snapshot.json
+          fi
+
+      - name: Upload snapshot (לבדיקה)
+        uses: actions/upload-artifact@v4
+        with:
+          name: tttm-snapshot
+          path: snapshot.json
+          retention-days: 7
