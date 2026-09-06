@@ -50,7 +50,7 @@
   const isAdmin = () => S.claims?.role === 'admin';
   const isCoach = () => S.claims?.role === 'coach' || isAdmin();
   const canPublish = () => isAdmin() || S.claims?.canPublish === true;
-  const hasPersonal = () => (S.claims?.playerIds || []).length > 0;
+  const hasPersonal = () => (S.claims?.playerIds || []).length > 0 || !!S.claims?.tttmId;
   // אילו קבוצות ליגה רלוונטיות למשתמש: מאמן/מנהל רואה הכל; שחקן/הורה רק את הקבוצה שהוא משחק בה
   async function myTeams() {
     const teams = await D.teams();
@@ -85,7 +85,7 @@
     announcements: (n = 30) => cached('ann' + n, 12e4, async () =>
       colData(await db.collection('announcements').where('publishAt', '<=', new Date().toISOString()).orderBy('publishAt', 'desc').limit(n).get())),
     player: id => cached('player:' + id, 3e5, async () => docData(await db.doc('players/' + id).get())),
-    attendance: id => cached('att:' + id, 3e5, async () => docData(await db.doc('attendance/' + id).get())),
+    attendance: id => id ? cached('att:' + id, 3e5, async () => docData(await db.doc('attendance/' + id).get())) : Promise.resolve(null),
     syncStatus: () => cached('syncStatus', 6e4, async () => docData(await db.doc('meta/sync').get())),
     tournaments: () => cached('tournaments', 6e5, async () => colData(await db.collection('tttm/tournaments/items').get())),
     tttmPlayer: tid => cached('tp:' + tid, 3e5, async () => tid ? docData(await db.doc('tttm/players/items/' + tid).get()) : null),
@@ -117,9 +117,12 @@
           if (Array.isArray(live.playerIds) && live.playerIds.length) S.claims.playerIds = live.playerIds;
           if (live.name) S.claims.name = live.name;
           if (live.canPublish === true) S.claims.canPublish = true;
+          if (live.tttmId) S.claims.tttmId = String(live.tttmId);
         }
       } catch (e) { console.warn('live user doc unavailable', e); }
       S.players = (await Promise.all(S.claims.playerIds.map(D.player))).filter(Boolean);
+      // שחקן ליגה בלי כרטיס נוכחות (למשל מאמן שמשחק בליגה) — כרטיס וירטואלי כדי להציג דירוג TTTM
+      if (!S.players.length && S.claims.tttmId) S.players = [{ id: '', name: S.claims.name || '', tttmId: S.claims.tttmId, virtual: true }];
       S.leagueTeams = await myTeams().catch(() => []);
       showApp();
       route();
@@ -269,7 +272,9 @@
       </div>
       <div class="match-meta">${played ? fmtDate(m.date) : (m.date ? relDay(m.date) + ' · ' + fmtDate(m.date) : 'תאריך טרם נקבע')}
         ${m.isHome ? '· <b>בית</b>' : '· חוץ'}${m.drawName ? ' · ' + esc(m.drawName) : ''}</div>
-      ${!played && opts.remind !== false ? `<button class="btn btn-secondary btn-sm" style="margin:8px auto 0;display:flex" data-remind="match:${esc(m.matchId)}" data-label="${esc(m.homeName)} נגד ${esc(m.awayName)}"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-bell"/></svg> הזכר לי</button>` : ''}`;
+      ${!played && opts.remind !== false ? `<div class="row" style="justify-content:center;margin-top:8px">
+        ${m.date ? `<a class="btn btn-secondary btn-sm" href="${esc(gcalUrl(m))}" target="_blank" rel="noopener"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-calendar"/></svg> הוסף ליומן</a>` : ''}
+        <button class="btn btn-secondary btn-sm" data-remind="match:${esc(m.matchId)}" data-label="${esc(m.homeName)} נגד ${esc(m.awayName)}"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-bell"/></svg> תזכורת במייל</button></div>` : ''}`;
   }
   const icoSvg = n => `<svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-${n}"/></svg>`;
   const empty = (ico, text) => `<div class="empty"><div class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-${ico}"/></svg></div>${esc(text)}</div>`;
@@ -378,7 +383,7 @@
     const st = attStats(att);
     html += `<h1>${esc(p.name)}</h1>`;
     // attendance
-    html += `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-check"/></svg></span>נוכחות באימונים</div>
+    if (!p.virtual) html += `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-check"/></svg></span>נוכחות באימונים</div>
       <div class="stat-grid"><div><div class="big-number">${st.week}</div><div class="lbl">השבוע</div></div><div><div class="big-number">${st.month}</div><div class="lbl">החודש</div></div><div><div class="big-number">${st.season}</div><div class="lbl">העונה</div></div></div>
       <div class="row" style="justify-content:center;margin-top:12px">${st.pct != null ? `<span class="chip ${st.pct >= 75 ? 'green' : st.pct >= 50 ? 'orange' : 'red'}">${st.pct}% הגעה</span>` : ''}${st.streak ? `<span class="chip green">🔥 ${st.streak} אימונים ברצף</span>` : ''}</div>
       ${calendar(att)}
@@ -454,7 +459,9 @@
     const seg = `<div class="seg">${teams.map((t, i) => `<button data-seg="${esc(t.teamKey)}" class="${i === 0 ? 'active' : ''}">${esc(t.teamKey)}</button>`).join('')}</div>`;
     return seg + teams.map((t, i) => `<div data-pane="${esc(t.teamKey)}" class="${i ? 'hidden' : ''}">
       <div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-trophy"/></svg></span>${esc(t.league)}</div><p class="muted small">${esc(t.drawName)}</p>
-        <button class="btn btn-secondary" data-remind="team:${esc(t.teamId)}" data-label="כל משחקי ${esc(t.teamKey)} העונה"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-bell"/></svg> שלח לי תזכורת לכל משחקי ${esc(t.teamKey)} העונה</button></div>
+        <a class="btn btn-primary" style="margin-bottom:8px" href="${esc(icsFor(t.upcoming || [], 'משחקי ' + t.teamKey + ' — ' + CLUB.name))}" download="matches-${esc(t.teamKey)}.ics"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-calendar"/></svg> הוסף את כל משחקי ${esc(t.teamKey)} ליומן</a>
+        <button class="btn btn-secondary" data-remind="team:${esc(t.teamId)}" data-label="כל משחקי ${esc(t.teamKey)} העונה"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-bell"/></svg> תזכורת במייל לפני כל משחק</button>
+        <p class="small muted" style="margin-top:8px">"הוסף ליומן" נכנס ליומן של הטלפון עם התראה יום לפני. תזכורת במייל נשלחת שבוע לפני ובבוקר המשחק.</p></div>
       <div class="card"><div class="card-title">טבלה</div><div class="table-wrap"><table class="tbl"><tr><th class="num">#</th><th>קבוצה</th><th class="num">מש'</th><th class="num">נצ'</th><th class="num">הפ'</th><th class="num">נק'</th></tr>
         ${(t.table || []).map(r => `<tr class="${r.ours ? 'ours' : ''}"><td class="num">${r.position ?? ''}</td><td>${esc(r.name)}</td><td class="num">${r.played ?? ''}</td><td class="num">${r.won ?? ''}</td><td class="num">${r.lost ?? ''}</td><td class="num"><b>${r.points ?? ''}</b></td></tr>`).join('')}</table></div></div>
       ${(t.upcoming || []).length ? `<div class="card"><div class="card-title">משחקים קרובים</div><ul class="list">${t.upcoming.map(m => `<li>${matchCard(m)}</li>`).join('')}</ul></div>` : ''}
@@ -530,6 +537,39 @@
     <p class="center small muted">מחובר: ${esc(S.claims.name || '')} · ${roleLabel(S.claims.role)} · ${esc(fmtPhone(S.user.uid))}</p>`;
   document.addEventListener('click', e => { if (e.target.id === 'btn-logout-2' || e.target.id === 'btn-logout-3') $('#btn-logout').click(); });
 
+
+  // ---------------------------------------------------------------- calendar (יומן)
+  const HOME_VENUE = 'אולם הספורט בבית הספר רמת כורזים';
+  function matchTimes(m) {
+    const [y, mo, d] = (m.date || '').split('-').map(Number);
+    const [hh, mi] = (m.time || '19:00').split(':').map(Number);
+    const start = new Date(y, mo - 1, d, hh || 19, mi || 0);
+    return [start, new Date(start.getTime() + 3 * 3600e3)];
+  }
+  const icsStamp = dt => dt.getFullYear() + String(dt.getMonth() + 1).padStart(2, '0') + String(dt.getDate()).padStart(2, '0') + 'T' + String(dt.getHours()).padStart(2, '0') + String(dt.getMinutes()).padStart(2, '0') + '00';
+  const matchTitle = m => `🏓 ${m.homeName} נגד ${m.awayName}`;
+  const matchWhere = m => m.isHome ? HOME_VENUE : `משחק חוץ אצל ${m.isHome ? m.awayName : m.homeName}`;
+  function gcalUrl(m) {
+    if (!m.date) return '';
+    const [a, b] = matchTimes(m);
+    const q = new URLSearchParams({ action: 'TEMPLATE', text: matchTitle(m), dates: `${icsStamp(a)}/${icsStamp(b)}`,
+      details: `${m.league || ''} · ${m.drawName || ''}\n${CLUB.name}`, location: matchWhere(m), ctz: 'Asia/Jerusalem' });
+    return 'https://calendar.google.com/calendar/render?' + q.toString();
+  }
+  function icsFor(matches, label) {
+    const esc2 = t => String(t || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+    const ev = matches.filter(m => m.date && !m.played).map(m => {
+      const [a, b] = matchTimes(m);
+      return ['BEGIN:VEVENT', `UID:ttcmvh-${m.matchId}@portal`, `DTSTAMP:${icsStamp(new Date())}`,
+        `DTSTART;TZID=Asia/Jerusalem:${icsStamp(a)}`, `DTEND;TZID=Asia/Jerusalem:${icsStamp(b)}`,
+        `SUMMARY:${esc2(matchTitle(m))}`, `LOCATION:${esc2(matchWhere(m))}`,
+        `DESCRIPTION:${esc2((m.league || '') + ' · ' + (m.drawName || '') + ' · ' + CLUB.name)}`,
+        'BEGIN:VALARM', 'TRIGGER:-P1D', 'ACTION:DISPLAY', `DESCRIPTION:${esc2('מחר: ' + matchTitle(m))}`, 'END:VALARM',
+        'END:VEVENT'].join('\r\n');
+    });
+    const cal = ['BEGIN:VCALENDAR', 'VERSION:2.0', `PRODID:-//${CLUB.name}//portal//HE`, `X-WR-CALNAME:${esc2(label)}`, ...ev, 'END:VCALENDAR'].join('\r\n');
+    return 'data:text/calendar;charset=utf-8,' + encodeURIComponent(cal);
+  }
   // ---------------------------------------------------------------- reminders
   async function openReminder(target, label) {
     const [scope, id] = target.split(':');
