@@ -140,7 +140,17 @@
   // ---------------------------------------------------------------- router
   const TITLES = { home: 'בית', me: 'האזור האישי', schedule: 'לוח אימונים', league: 'טבלאות ליגה', news: 'הודעות ואירועים', coaches: 'המאמנים שלנו', contact: 'צור קשר', social: 'עקבו אחרינו', partners: 'שותפים', more: 'עוד', publish: 'הודעה חדשה', admin: 'ניהול', dashboard: 'דשבורד' };
   const SCREENS = {};
-  function go(name, param) { location.hash = '#/' + name + (param ? '/' + param : ''); }
+  function navDepth() { return (history.state && history.state.idx) || 0; }
+  function go(name, param) {
+    const h = '#/' + name + (param ? '/' + param : '');
+    const fromDrawer = history.state && history.state.drawer;
+    hideDrawer();
+    if (location.hash === h) { if (fromDrawer) history.back(); return; }
+    // ניווט מתוך התפריט מחליף את רשומת התפריט, כדי ש"חזרה" תחזור למסך ולא תפתח אותו שוב
+    if (fromDrawer) history.replaceState({ idx: navDepth() }, '', h);
+    else history.pushState({ idx: navDepth() + 1 }, '', h);
+    route();
+  }
   async function route() {
     if (!S.user) return;
     const m = location.hash.match(/^#\/([a-z]+)(?:\/(.+))?/);
@@ -162,12 +172,37 @@
     window.scrollTo(0, 0); main.focus({ preventScroll: true });
   }
   window.addEventListener('hashchange', route);
-  $$('[data-nav]').forEach(b => b.addEventListener('click', () => { closeDrawer(); go(b.dataset.nav); }));
-  $('#btn-back').addEventListener('click', () => history.length > 1 ? history.back() : go('home'));
-  $('#btn-menu').addEventListener('click', () => $('#drawer').classList.remove('hidden'));
-  $('#btn-close-drawer').addEventListener('click', closeDrawer);
+  $$('[data-nav]').forEach(b => b.addEventListener('click', () => go(b.dataset.nav)));
+  $('#btn-back').addEventListener('click', goBack);
+  $('#btn-menu').addEventListener('click', openDrawer);
+  $('#btn-close-drawer').addEventListener('click', () => closeDrawer());
   $('#drawer').addEventListener('click', e => { if (e.target.id === 'drawer') closeDrawer(); });
-  function closeDrawer() { $('#drawer').classList.add('hidden'); }
+
+  // ---- כפתור החזרה של אנדרואיד: סוגר קודם תפריט/חלונית, ורק אז חוזר מסך אחורה
+  function drawerOpen() { return !$('#drawer').classList.contains('hidden'); }
+  function openDrawer() {
+    $('#drawer').classList.remove('hidden');
+    history.pushState({ drawer: true, idx: navDepth() }, '', location.href);  // "חזרה" תסגור את התפריט
+  }
+  function hideDrawer() { $('#drawer').classList.add('hidden'); }
+  function closeDrawer() {
+    if (!drawerOpen()) return;
+    hideDrawer();
+    if (history.state && history.state.drawer) history.back();
+  }
+  window.addEventListener('popstate', () => {
+    if (drawerOpen()) { $('#drawer').classList.add('hidden'); return; }   // "חזרה" ראשונה סוגרת תפריט
+    const modal = $('#modal');
+    if (modal) { modal.remove(); return; }                                // ואחריו חלונית פתוחה
+    route();
+  });
+  function pushModalState() { history.pushState({ modal: true, idx: navDepth() }, '', location.href); }
+  function closeModal() {
+    const modal = $('#modal'); if (!modal) return;
+    modal.remove();
+    if (history.state && history.state.modal) history.back();
+  }
+  function goBack() { if (navDepth() > 0) history.back(); else go('home'); }
 
   // delegated actions inside main
   function bindMain(main) {
@@ -444,15 +479,15 @@
       <input type="hidden" name="scope" value="${esc(scope)}"><input type="hidden" name="id" value="${esc(id)}">
       <button class="btn btn-primary" type="submit">שמור תזכורת</button><button class="btn btn-secondary" type="button" data-close style="margin-top:8px">ביטול</button></form></div></div>`;
     document.body.insertAdjacentHTML('beforeend', html);
-    const modal = $('#modal');
-    modal.addEventListener('click', e => { if (e.target === modal || e.target.dataset.close != null) modal.remove(); });
+    const modal = $('#modal'); pushModalState();
+    modal.addEventListener('click', e => { if (e.target === modal || e.target.dataset.close != null) closeModal(); });
     $('form', modal).addEventListener('submit', async e => {
       e.preventDefault();
       const f = e.target, email = f.email.value.trim(), timing = [f.week.checked && 'week', f.sameDay.checked && 'sameDay'].filter(Boolean);
       if (!timing.length) return toast('בחר לפחות מועד אחד');
       try {
         await db.collection('reminders').add({ email, scope, [scope === 'match' ? 'matchId' : 'teamId']: id, timing, sentFor: [], unsubscribeToken: uid(), ownerUid: S.user.uid, createdAt: new Date().toISOString() });
-        localStorage.setItem('remEmail', email); modal.remove(); toast('✅ התזכורת נשמרה');
+        localStorage.setItem('remEmail', email); closeModal(); toast('✅ התזכורת נשמרה');
       } catch (err) { console.error(err); toast('שגיאה בשמירה'); }
     });
     setTimeout(() => $('#rem-email').focus(), 50);
@@ -637,11 +672,12 @@
       <label class="check"><input type="checkbox" name="active" ${p.active !== false ? 'checked' : ''}> פעיל</label>
       <button class="btn btn-primary" type="submit">שמור</button><button class="btn btn-secondary" type="button" data-close style="margin-top:8px">סגור</button></form></div></div>`;
     document.body.insertAdjacentHTML('beforeend', html);
-    const modal = $('#modal'); modal.addEventListener('click', e => { if (e.target === modal || e.target.dataset.close != null) modal.remove(); });
+    const modal = $('#modal'); pushModalState();
+    modal.addEventListener('click', e => { if (e.target === modal || e.target.dataset.close != null) closeModal(); });
     $('form', modal).addEventListener('submit', async e => {
       e.preventDefault(); const f = e.target;
       await db.doc('players/' + f.id.value).update({ name: f.name.value.trim(), firstName: firstName(f.name.value), tttmId: f.tttmId.value.trim() || null, groupId: f.groupId.value, active: f.active.checked, updatedAt: new Date().toISOString() });
-      invalidate('player:'); modal.remove(); toast('נשמר'); route();
+      invalidate('player:'); closeModal(); toast('נשמר'); route();
     });
   };
   FORMS.saveGroup = async f => {

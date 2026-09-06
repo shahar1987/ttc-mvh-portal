@@ -348,3 +348,96 @@ input[type="time"], input[type="datetime-local"] { direction: ltr; }
   .main { max-width: none; padding: 0; }
   .card { break-inside: avoid; box-shadow: none; }
 }
+
+/* ==================================================================
+   רענון עיצוב — מראה נעים ומזמין יותר (נשמרת הנגישות: טקסט גדול, ניגודיות)
+   ================================================================== */
+:root {
+  --blue-soft: #eaf0fd;
+  --shadow: 0 1px 2px rgba(11,61,145,.06), 0 6px 18px rgba(11,61,145,.07);
+  --shadow-lift: 0 2px 4px rgba(11,61,145,.08), 0 12px 28px rgba(11,61,145,.12);
+  --radius: 20px;
+}
+body {
+  background:
+    radial-gradient(1100px 420px at 100% -8%, #e6eeff 0%, rgba(230,238,255,0) 62%),
+    radial-gradient(900px 380px at -10% 4%, #fff0e4 0%, rgba(255,240,228,0) 58%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+/* סרגל עליון: ☰ בימין, חזרה בשמאל, כותרת תמיד במרכז */
+.topbar {
+  display: grid; grid-template-columns: 52px 1fr 52px; align-items: center;
+  background: linear-gradient(180deg, #12489f 0%, var(--blue) 55%, var(--blue-dark) 100%);
+  box-shadow: 0 2px 14px rgba(8,44,106,.28);
+}
+.topbar-title { letter-spacing: .2px; }
+.topbar .icon-btn { border-radius: 14px; }
+.topbar .icon-btn:active { background: rgba(255,255,255,.16); }
+
+/* כרטיסים */
+.card {
+  border: 1px solid #e9edf6;
+  box-shadow: var(--shadow);
+  transition: box-shadow .18s ease, transform .18s ease;
+}
+.card.tap:active { transform: translateY(1px); box-shadow: var(--shadow-lift); background: #fbfcff; }
+.card-title { font-size: 1.1rem; letter-spacing: .1px; }
+.card-title .ico {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; border-radius: 12px; background: var(--blue-soft); font-size: 1.15rem;
+}
+
+/* קיצורי דרך */
+.shortcuts button, .shortcuts a {
+  border: 1px solid #e3e9f4; background: linear-gradient(180deg, #ffffff 0%, #f7f9fe 100%);
+  box-shadow: var(--shadow); min-height: 96px; border-radius: 18px;
+  transition: transform .16s ease, box-shadow .16s ease;
+}
+.shortcuts button:active, .shortcuts a:active { transform: translateY(2px); box-shadow: none; background: var(--blue-soft); }
+.shortcuts .ico { font-size: 1.85rem; }
+
+/* כפתורים */
+.btn { border-radius: 16px; transition: transform .12s ease, filter .12s ease; }
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: linear-gradient(180deg, #12489f 0%, var(--blue) 100%); box-shadow: 0 4px 12px rgba(11,61,145,.25); }
+.btn-orange { background: linear-gradient(180deg, #ff8038 0%, var(--orange) 100%); box-shadow: 0 4px 12px rgba(242,107,29,.28); }
+
+/* ניווט תחתון: "גלולה" מתחת ללשונית הפעילה */
+.bottomnav {
+  background: rgba(255,255,255,.96); backdrop-filter: blur(8px);
+  border-top: 1px solid var(--line); box-shadow: 0 -2px 16px rgba(11,61,145,.07);
+}
+.bottomnav button { position: relative; }
+.bottomnav button.active::before {
+  content: ""; position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+  width: 54px; height: 34px; border-radius: 999px; background: var(--blue-soft);
+}
+.bottomnav button .ico, .bottomnav button span { position: relative; }
+.bottomnav button .ico { transition: transform .18s ease; }
+
+/* מסך כניסה */
+.login-card { box-shadow: var(--shadow-lift); border-radius: 24px; }
+.login-title { letter-spacing: .2px; }
+
+/* פריטי רשימה ואנשים */
+.list li { padding: 14px 0; }
+.person img, .person .avatar { box-shadow: 0 2px 10px rgba(11,61,145,.12); }
+.seg { background: #e9edf6; }
+.seg button.active { box-shadow: 0 1px 3px rgba(11,61,145,.18); }
+.chip { padding: 3px 14px; }
+
+/* תפריט צד (מחשב) ומגירה (נייד) */
+.sidebar { box-shadow: 2px 0 18px rgba(11,61,145,.06); }
+.drawer-panel { border-radius: 0 0 0 24px; }
+
+/* פחות תנועה למי שביקש זאת במערכת ההפעלה */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+
+@media (min-width: 1000px) {
+  .topbar { grid-template-columns: 0 1fr 52px; }   /* אין ☰ במחשב — יש תפריט צד */
+  .topbar-title { text-align: right; }
+}
