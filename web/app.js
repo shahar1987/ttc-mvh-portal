@@ -399,7 +399,7 @@
     const coaches = await D.coaches();
     if (!coaches.length) return empty('🧑‍🏫', 'פרטי המאמנים יוזנו בקרוב');
     return coaches.map(c => `<div class="card"><div class="person">${c.photoUrl ? `<img src="${esc(c.photoUrl)}" alt="">` : '<div class="avatar">🏓</div>'}
-      <div><div class="name">${esc(c.name)}</div><div class="muted small">${esc((c.venues || []).join(' · '))}</div>${c.bio ? `<div class="small">${esc(c.bio)}</div>` : ''}</div></div>
+      <div><div class="name">${esc(c.name)}</div><div class="muted small">${esc((c.venues || []).join(' · '))}</div>${(c.groupNames || []).length ? `<div class="muted small">מאמן/ת: ${esc(c.groupNames.join(' · '))}</div>` : ''}${c.bio ? `<div class="small">${esc(c.bio)}</div>` : ''}</div></div>
       ${c.phone ? `<div class="row" style="margin-top:12px"><a class="btn btn-primary btn-sm" href="${telHref(c.phone)}">📞 ${esc(fmtPhone(normalizePhone(c.phone)))}</a><a class="btn btn-secondary btn-sm" href="${waHref(c.phone)}" target="_blank" rel="noopener">💬 וואטסאפ</a></div>` : ''}</div>`).join('');
   };
 
