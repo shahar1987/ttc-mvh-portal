@@ -27,6 +27,15 @@ CLUB = "מועדון טניס שולחן מבואות החרמון"
 HEB_DAYS = ["שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת", "ראשון"]
 
 
+def mask(email):
+    """a***@domain — לא מדפיסים כתובות מייל מלאות ללוג ציבורי"""
+    try:
+        u, d = str(email).split("@", 1)
+        return (u[:1] + "***@" + d) if u else "***@" + d
+    except ValueError:
+        return "***"
+
+
 def heb_date(iso):
     d = dt.date.fromisoformat(iso)
     return f"יום {HEB_DAYS[d.weekday()]}, {d.day}.{d.month}.{d.year}"
@@ -90,7 +99,7 @@ def main():
         m = nxt[0]
         subj, html = build_email(m, teams.get(m.get("ourTeamId")), "week", PORTAL_URL)
         send(args.test, "[בדיקה] " + subj, html)
-        print(f"מייל בדיקה נשלח אל {args.test} על המשחק {m['homeName']} נגד {m['awayName']} ({m['date']})", file=sys.stderr)
+        print(f"מייל בדיקה נשלח אל {mask(args.test)} על המשחק {m['homeName']} נגד {m['awayName']} ({m['date']})", file=sys.stderr)
         return
 
     if not args.dry_run:
@@ -119,16 +128,16 @@ def main():
                     continue
                 subj, html = build_email(m, teams.get(m.get("ourTeamId")), timing, unsub)
                 if args.dry_run:
-                    print(f"[dry-run] היה נשלח עכשיו: {rem['email']} <- {key} ({m['date']})", file=sys.stderr)
+                    print(f"[dry-run] היה נשלח עכשיו: {mask(rem['email'])} <- {key} ({m['date']})", file=sys.stderr)
                     sent += 1
                     continue
                 try:
                     send(rem["email"], subj, html)
                     already.add(key)
                     sent += 1
-                    print(f"sent {timing} -> {rem['email']} for {key}", file=sys.stderr)
+                    print(f"sent {timing} -> {mask(rem['email'])} for {key}", file=sys.stderr)
                 except Exception as e:  # pragma: no cover
-                    print(f"FAILED {rem['email']} {key}: {e}", file=sys.stderr)
+                    print(f"FAILED {mask(rem['email'])} {key}: {e}", file=sys.stderr)
         if args.dry_run:
             for m in cand:
                 if m.get("date") and not m.get("played"):
@@ -136,7 +145,7 @@ def main():
                     for timing in rem.get("timing") or []:
                         when = md - dt.timedelta(days=7) if timing == "week" else md
                         if when >= today and f"{m['matchId']}:{timing}" not in already:
-                            print(f"[dry-run] מתוכנן: {rem['email']} <- {m['homeName']} נגד {m['awayName']} "
+                            print(f"[dry-run] מתוכנן: {mask(rem['email'])} <- {m['homeName']} נגד {m['awayName']} "
                                   f"({m['date']}) — יישלח ב-{when}", file=sys.stderr)
             continue
         if already != set(rem.get("sentFor") or []):
