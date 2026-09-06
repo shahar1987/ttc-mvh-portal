@@ -51,6 +51,19 @@
   const isCoach = () => S.claims?.role === 'coach' || isAdmin();
   const canPublish = () => isAdmin() || S.claims?.canPublish === true;
   const hasPersonal = () => (S.claims?.playerIds || []).length > 0;
+  // אילו קבוצות ליגה רלוונטיות למשתמש: מאמן/מנהל רואה הכל; שחקן/הורה רק את הקבוצה שהוא משחק בה
+  async function myTeams() {
+    const teams = await D.teams();
+    if (isCoach()) return teams;
+    if (!hasPersonal()) return [];
+    const keys = new Set();
+    for (const p of S.players) {
+      (p.leagueTeams || []).forEach(k => keys.add(k));           // שיוך ידני ממסך הניהול
+      const tp = await D.tttmPlayer(p.tttmId);                   // או שיוך אוטומטי לפי משחקים ב-TTTM
+      if (tp && tp.teamKey) keys.add(tp.teamKey);
+    }
+    return teams.filter(t => keys.has(t.teamKey));
+  }
 
   // ---------------------------------------------------------------- data layer (with small cache to save reads)
   async function cached(key, ttlMs, fn) {
@@ -96,6 +109,7 @@
       const t = await user.getIdTokenResult();
       S.user = user; S.claims = { role: t.claims.role || 'member', playerIds: t.claims.playerIds || [], canPublish: !!t.claims.canPublish, name: t.claims.name || '' };
       S.players = (await Promise.all(S.claims.playerIds.map(D.player))).filter(Boolean);
+      S.leagueTeams = await myTeams().catch(() => []);
       showApp();
       route();
       setupPush();
@@ -114,6 +128,7 @@
     $('#sidebar-name').textContent = S.claims.name || fmtPhone(S.user.uid);
     $('#sidebar-role').textContent = roleLabel(S.claims.role);
     $$('.only-personal').forEach(el => el.classList.toggle('hidden', !hasPersonal()));
+    $$('.only-league').forEach(el => el.classList.toggle('hidden', !(S.leagueTeams || []).length));
     $$('.only-admin').forEach(el => el.classList.toggle('hidden', !isAdmin()));
     $$('.only-publisher').forEach(el => el.classList.toggle('hidden', !canPublish()));
     $('#nav-me').classList.toggle('hidden', !hasPersonal());
@@ -159,6 +174,7 @@
     if (name === 'me' && !hasPersonal()) name = 'home';
     if ((name === 'admin' || name === 'dashboard') && !isAdmin()) name = 'home';
     if (name === 'publish' && !canPublish()) name = 'home';
+    if (name === 'league' && !(S.leagueTeams || []).length) name = 'home';
     $('#topbar-title').textContent = TITLES[name] || '';
     const mainFour = ['home', 'me', 'schedule', 'league'];
     $$('.bottomnav button').forEach(b => b.classList.toggle('active', b.dataset.nav === name || (b.dataset.nav === 'more' && !mainFour.includes(name))));
@@ -270,16 +286,15 @@
     html += vis.length ? `<ul class="list">${vis.slice(0, 3).map(a => `<li><div style="font-weight:700">${esc(a.title)}</div><div class="small muted">${fmtDate(a.publishAt.slice(0, 10), false)}${a.authorName ? ' · ' + esc(a.authorName) : ''}</div></li>`).join('')}</ul><a class="card-more" data-go="news">כל ההודעות ←</a>` : '<p class="muted">אין הודעות חדשות</p>';
     html += '</div>';
 
-    // next match
-    const myTeamKey = S.players[S.activePlayer] && (await D.tttmPlayer(S.players[S.activePlayer].tttmId))?.teamKey;
-    const teamOrder = teams.slice().sort((a, b) => (a.teamKey === myTeamKey ? -1 : 1));
-    const nm = teamOrder.map(t => t.nextMatch && { ...t.nextMatch, teamKey: t.teamKey }).filter(Boolean).sort((a, b) => (a.date || '').localeCompare(b.date || ''))[0];
+    // next match — רק לשחקנים שמשחקים באותה ליגה (ולמאמנים/מנהלים)
+    const mine = await myTeams();
+    const nm = mine.map(t => t.nextMatch && { ...t.nextMatch, teamKey: t.teamKey }).filter(Boolean).sort((a, b) => (a.date || '').localeCompare(b.date || ''))[0];
     if (nm) html += `<div class="card"><div class="card-title"><span class="ico">🏆</span>המשחק הבא — ${esc(nm.teamKey)}</div>${matchCard(nm)}<a class="card-more" data-go="league">טבלאות ליגה ←</a></div>`;
 
     // shortcuts
     html += `<div class="shortcuts">
       <button data-go="schedule"><span class="ico">📅</span>לוח אימונים</button>
-      <button data-go="league"><span class="ico">🏆</span>טבלאות ליגה</button>
+      ${mine.length ? '<button data-go="league"><span class="ico">🏆</span>טבלאות ליגה</button>' : ''}
       <button data-go="coaches"><span class="ico">🧑‍🏫</span>מאמנים</button>
       <button data-go="contact"><span class="ico">📞</span>צור קשר</button>
       <a href="${esc(CLUB.facebook)}" target="_blank" rel="noopener"><span class="ico">📘</span>פייסבוק</a>
@@ -404,8 +419,10 @@
   const timeRange = g => `<span dir="ltr">${esc(g.startTime || '')}${g.endTime ? '–' + esc(g.endTime) : ''}</span>`;
 
   SCREENS.league = async () => {
-    const teams = (await D.teams()).sort((a, b) => (a.teamKey || '').localeCompare(b.teamKey || ''));
-    if (!teams.length) return empty('🏆', 'טבלאות הליגה יופיעו לאחר ריצת הסקרייפר הראשונה');
+    const teams = (await myTeams()).sort((a, b) => (a.teamKey || '').localeCompare(b.teamKey || ''));
+    if (!teams.length) return empty('🏆', (await D.teams()).length
+      ? 'אין לך קבוצת ליגה. הטבלאות מוצגות רק לשחקנים שרשומים לליגה.'
+      : 'טבלאות הליגה יופיעו לאחר ריצת הסקרייפר הראשונה');
     const seg = `<div class="seg">${teams.map((t, i) => `<button data-seg="${esc(t.teamKey)}" class="${i === 0 ? 'active' : ''}">${esc(t.teamKey)}</button>`).join('')}</div>`;
     return seg + teams.map((t, i) => `<div data-pane="${esc(t.teamKey)}" class="${i ? 'hidden' : ''}">
       <div class="card"><div class="card-title"><span class="ico">🏆</span>${esc(t.league)}</div><p class="muted small">${esc(t.drawName)}</p>
@@ -604,7 +621,7 @@
             ${u.id !== S.user.uid ? `<button class="btn btn-danger btn-sm" data-action="removeUser" data-id="${u.id}">הסר</button>` : ''}</li>`).join('')}</ul></div>`,
       players: `<div class="card"><div class="card-title">🏓 שחקנים (${players.length})</div><p class="small muted">השחקנים מגיעים אוטומטית מאפליקציית הנוכחות (סנכרון יומי). כאן מקשרים מספר TTTM ומוסיפים טלפונים.</p>
         <form data-form="addPlayer" class="row" style="margin-bottom:10px"><input name="name" placeholder="שם שחקן חדש" required><button class="btn btn-secondary btn-sm" type="submit">הוסף</button></form>
-        <ul class="list">${players.map(p => `<li><div class="row spread"><div><b>${esc(p.name)}</b> <span class="chip gray">${esc(groups.find(g => g.id === p.groupId)?.name || 'ללא קבוצה')}</span>${p.tttmId ? `<span class="chip">TTTM ${esc(p.tttmId)}</span>` : ''}</div>
+        <ul class="list">${players.map(p => `<li><div class="row spread"><div><b>${esc(p.name)}</b> <span class="chip gray">${esc(groups.find(g => g.id === p.groupId)?.name || 'ללא קבוצה')}</span>${p.tttmId ? `<span class="chip">TTTM ${esc(p.tttmId)}</span>` : ''}${(p.leagueTeams || []).map(k => `<span class="chip orange">${esc(k)}</span>`).join('')}</div>
           <button class="btn btn-secondary btn-sm" data-action="editPlayer" data-id="${p.id}">עריכה</button></div>
           <div class="small muted">${(p.phones || []).map(fmtPhone).map(esc).join(' · ') || 'אין מספרים מקושרים'}</div>
           <div class="row" style="margin-top:6px"><form data-form="addPhoneToPlayer" class="row" style="flex:1"><input type="hidden" name="playerId" value="${p.id}"><input name="phone" type="tel" placeholder="הוסף מספר של הורה" style="direction:ltr;min-height:48px"><input name="name" placeholder="שם ההורה" style="min-height:48px"><button class="btn btn-primary btn-sm" type="submit">+</button></form></div></li>`).join('')}</ul></div>`,
@@ -665,10 +682,13 @@
     await upsertUser(phone, f.name.value.trim() || ('הורה של ' + firstName(p.name)), 'parent', p.id); invalidate('player:'); toast('✅ המספר קושר'); route();
   };
   ACTIONS.editPlayer = async el => {
-    const p = docData(await db.doc('players/' + el.dataset.id).get()), groups = await D.groups();
+    const p = docData(await db.doc('players/' + el.dataset.id).get()), groups = await D.groups(), allTeams = await D.teams();
+    const inTeam = k => (p.leagueTeams || []).includes(k);
     const html = `<div class="modal" id="modal"><div class="modal-panel"><h2>${esc(p.name)}</h2><form data-form="savePlayer" class="form-grid"><input type="hidden" name="id" value="${p.id}">
       <label>שם מלא</label><input name="name" value="${esc(p.name)}" required><label>מספר שחקן ב-TTTM</label><input name="tttmId" value="${esc(p.tttmId || '')}" inputmode="numeric" placeholder="למשל 1439">
       <label>קבוצה</label><select name="groupId"><option value="">ללא</option>${groups.map(g => `<option value="${g.id}" ${p.groupId === g.id ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select>
+      ${allTeams.length ? `<label>סגל ליגה (מי שלא מסומן — לא רואה טבלאות ליגה)</label>
+      ${allTeams.map(t => `<label class="check"><input type="checkbox" name="team_${esc(t.teamKey)}" ${inTeam(t.teamKey) ? 'checked' : ''}> ${esc(t.teamKey)} — ${esc(t.league || '')}</label>`).join('')}` : ''}
       <label class="check"><input type="checkbox" name="active" ${p.active !== false ? 'checked' : ''}> פעיל</label>
       <button class="btn btn-primary" type="submit">שמור</button><button class="btn btn-secondary" type="button" data-close style="margin-top:8px">סגור</button></form></div></div>`;
     document.body.insertAdjacentHTML('beforeend', html);
@@ -676,7 +696,8 @@
     modal.addEventListener('click', e => { if (e.target === modal || e.target.dataset.close != null) closeModal(); });
     $('form', modal).addEventListener('submit', async e => {
       e.preventDefault(); const f = e.target;
-      await db.doc('players/' + f.id.value).update({ name: f.name.value.trim(), firstName: firstName(f.name.value), tttmId: f.tttmId.value.trim() || null, groupId: f.groupId.value, active: f.active.checked, updatedAt: new Date().toISOString() });
+      const leagueTeams = allTeams.map(t => t.teamKey).filter(k => f['team_' + k] && f['team_' + k].checked);
+      await db.doc('players/' + f.id.value).update({ name: f.name.value.trim(), firstName: firstName(f.name.value), tttmId: f.tttmId.value.trim() || null, groupId: f.groupId.value, leagueTeams, active: f.active.checked, updatedAt: new Date().toISOString() });
       invalidate('player:'); closeModal(); toast('נשמר'); route();
     });
   };
