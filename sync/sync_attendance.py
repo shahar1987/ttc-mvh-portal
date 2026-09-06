@@ -44,6 +44,18 @@ def normalize_phone(raw):
     return "972" + d if re.fullmatch(r"5\d{8}", d) else None
 
 
+# אותה לוגיקה כמו באפליקציית הנוכחות: קבוצת מבוגרים לפי דגל מפורש, אחרת לפי שם הקבוצה
+ADULT_RE = re.compile(r"מבוגרים|בוגרים|פרקינסון|סגל|ותיקים")
+
+
+def is_adult_group(g):
+    if not g:
+        return False
+    if isinstance(g.get("isAdultGroup"), bool):
+        return g["isAdultGroup"]
+    return bool(ADULT_RE.search(g.get("name") or ""))
+
+
 def _norm_name(n):
     return re.sub(r"[\s'\u05f3\u2019\-]+", "", (n or "")).strip()
 
@@ -78,6 +90,7 @@ def main():
             "endTime": g.get("endTime", ""),
             "coachIds": g.get("coachIds") or [],
             "memberNames": sorted(members, key=lambda m: m["firstName"]),
+            "isAdultGroup": is_adult_group(g),
             "source": "attendance-app",
             "updatedAt": now,
         }, merge=True)
@@ -85,6 +98,7 @@ def main():
 
     # ---- players
     existing = {d.id: d.to_dict() for d in dst.collection("players").stream()}
+    created, linked = [], []
     # מיפוי שם -> מספר TTTM (seed/tttm_players.json); שחקן שהשם שלו תואם מקבל tttmId אוטומטית
     tttm_map = {}
     try:
@@ -106,21 +120,45 @@ def main():
         }
         if not (existing.get(pid) or {}).get("tttmId") and _norm_name(name) in tttm_map:
             doc["tttmId"] = tttm_map[_norm_name(name)]
+        adult = is_adult_group(groups.get(p.get("groupId", "")))
+        doc["isAdult"] = adult
         phones = set((existing.get(pid) or {}).get("phones") or [])
         if auto_phones:
+            first = (doc["firstName"] or name).strip()
             for raw in (p.get("parentPhone"), p.get("phone"), p.get("parentPhone2")):
                 n = normalize_phone(raw)
-                if n:
-                    phones.add(n)
-                    uref = dst.collection("users").document(n)
-                    if not uref.get().exists:
-                        uref.set({"name": p.get("parentName") or name, "role": "parent",
-                                  "playerIds": [pid], "createdAt": now, "createdBy": "sync"})
-                    else:
-                        uref.update({"playerIds": firestore.ArrayUnion([pid])})
+                if not n or n in phones:
+                    if n:
+                        phones.add(n)
+                    continue
+                phones.add(n)
+                # בקבוצת מבוגרים הטלפון הוא של השחקן עצמו; בקבוצת נוער — של ההורה
+                if adult:
+                    label, role = name, "player"
+                else:
+                    label, role = (p.get("parentName") or "").strip() or f"הורה של {first}", "parent"
+                uref = dst.collection("users").document(n)
+                snap = uref.get()
+                if not snap.exists:
+                    uref.set({"name": label, "role": role, "playerIds": [pid],
+                              "canPublish": False, "createdAt": now, "createdBy": "sync"})
+                    created.append((n, label, role))
+                else:
+                    # לא משנים תפקיד של מנהל/מאמן שכבר קיים — רק מקשרים אליו את השחקן
+                    upd = {"playerIds": firestore.ArrayUnion([pid])}
+                    if not (snap.to_dict() or {}).get("name"):
+                        upd["name"] = label
+                    uref.update(upd)
+                    linked.append((n, label))
         doc["phones"] = sorted(phones)
         dst.collection("players").document(pid).set(doc, merge=True)
     print(f"players: {len(players)}", file=sys.stderr)
+    if auto_phones:
+        print(f"users created: {len(created)}  |  existing users linked: {len(linked)}", file=sys.stderr)
+        for n, label, role in created:
+            print(f"   + 0{n[3:]}  {label}  ({role})", file=sys.stderr)
+    else:
+        print("AUTO_ADD_PHONES=0 — לא נוצרו משתמשים. הפעל את הדגל כדי לייבא טלפונים.", file=sys.stderr)
 
     # ---- attendance
     present = {}      # playerId -> set(dates)
