@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b3d91">
+  <title>פורטל מועדון טניס שולחן מבואות החרמון</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ===== מסך כניסה ===== -->
+<section id="screen-login" class="screen login hidden" aria-label="כניסה">
+  <div class="login-card">
+    <img src="assets/logo-club.png" alt="לוגו המועדון" class="login-logo" onerror="this.style.display='none'">
+    <h1 class="login-title">פורטל המועדון</h1>
+    <p class="login-sub" id="login-club-name"></p>
+    <form id="login-form" novalidate>
+      <label for="phone" class="big-label">מספר הטלפון שלך</label>
+      <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="050-1234567" required aria-describedby="login-msg">
+      <button type="submit" class="btn btn-primary btn-xl" id="login-btn">כניסה</button>
+      <p id="login-msg" class="msg" role="alert" aria-live="assertive"></p>
+    </form>
+    <div class="partners-row">
+      <img src="assets/logo-matnas.png" alt="מתנ״ס אזורי מבואות החרמון" onerror="this.style.display='none'">
+      <img src="assets/logo-moatza.png" alt="מועצה אזורית מבואות החרמון" onerror="this.style.display='none'">
+    </div>
+  </div>
+</section>
+
+<!-- ===== האפליקציה ===== -->
+<div id="app" class="hidden">
+  <header class="topbar">
+    <button class="icon-btn" id="btn-back" aria-label="חזרה" hidden>&#x2192;</button>
+    <div class="topbar-title" id="topbar-title">בית</div>
+    <button class="icon-btn" id="btn-menu" aria-label="תפריט">&#x2630;</button>
+  </header>
+
+  <main id="main" class="main" tabindex="-1"></main>
+
+  <nav class="bottomnav" aria-label="ניווט ראשי">
+    <button data-nav="home" class="active"><span class="ico">🏠</span><span>בית</span></button>
+    <button data-nav="me" id="nav-me"><span class="ico">👤</span><span>האזור שלי</span></button>
+    <button data-nav="schedule"><span class="ico">📅</span><span>אימונים</span></button>
+    <button data-nav="league"><span class="ico">🏆</span><span>ליגה</span></button>
+    <button data-nav="more"><span class="ico">⋯</span><span>עוד</span></button>
+  </nav>
+
+  <div id="drawer" class="drawer hidden" role="dialog" aria-label="תפריט">
+    <div class="drawer-panel">
+      <div class="drawer-head">
+        <strong id="drawer-name"></strong>
+        <span id="drawer-role" class="chip"></span>
+      </div>
+      <button data-nav="home">🏠 בית</button>
+      <button data-nav="me" class="only-personal">👤 האזור האישי</button>
+      <button data-nav="schedule">📅 לוח אימונים</button>
+      <button data-nav="league">🏆 טבלאות ליגה</button>
+      <button data-nav="news">📣 הודעות ואירועים</button>
+      <button data-nav="coaches">🧑‍🏫 המאמנים שלנו</button>
+      <button data-nav="contact">📞 צור קשר</button>
+      <button data-nav="social">📱 עקבו אחרינו</button>
+      <button data-nav="partners">🤝 שותפים</button>
+      <hr>
+      <button data-nav="publish" class="only-publisher">✍️ הודעה חדשה</button>
+      <button data-nav="admin" class="only-admin">⚙️ ניהול</button>
+      <button data-nav="dashboard" class="only-admin">📊 דשבורד</button>
+      <hr>
+      <button id="btn-logout">🚪 יציאה</button>
+      <button id="btn-close-drawer" class="secondary">סגור</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</div>
+
+<div id="loading" class="loading"><div class="spinner"></div><p>טוען…</p></div>
+
+<!-- Firebase (compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
