@@ -327,6 +327,62 @@ def _score(s):
     return (int(m.group(1)), int(m.group(2))) if m else (None, None)
 
 
+
+def scrape_tournaments():
+    """כל התחרויות שמפורסמות ב-TTTM לעונה הנוכחית (עמוד 'אירועים -> כולם')."""
+    out = []
+    try:
+        s = soup("/?page=eventLst")
+    except Exception as e:
+        print(f"(tournaments page failed: {e})", file=sys.stderr)
+        return out
+    for box in s.select("div.lstEvent > div"):
+        a = box.select_one("div.titleEvent a")
+        if not a:
+            continue
+        eid, _ = id_from_href(a.get("href", ""), "e")
+        if not eid:
+            continue
+        img = box.find("img")
+        t = {
+            "eventId": eid,
+            "name": txt(a),
+            "date": parse_date(txt(box.find("p"))),
+            "url": BASE + a["href"],
+            "imageUrl": BASE + img["src"].replace(" ", "%20") if img and img.get("src") else "",
+            "venue": "",
+            "registrationUntil": "",
+            "categories": [],
+            "info": "",
+        }
+        try:
+            d = soup(f"/e/{eid}/x")
+            body = txt(d.select_one("div.content") or d.body)
+            m = re.search(r"מקום התחרות:\s*([^\n]+?)(?:\s{2,}|התחרות נערכת|מנהל התחרות|$)", body)
+            if m:
+                t["venue"] = m.group(1).strip(" .")[:120]
+            m = re.search(r"סיום ה?רשמה[^\d]{0,30}(\d{1,2}[./]\d{1,2}[./]\d{2,4})(?:[^\d]{0,15}(\d{1,2}:\d{2}))?", body)
+            if m:
+                t["registrationUntil"] = m.group(1).replace("/", ".") + (f" {m.group(2)}" if m.group(2) else "")
+            cats, seen = [], set()
+            for li in d.select("a"):
+                name = txt(li)
+                if not name.endswith("הרשמה"):
+                    continue
+                name = re.sub(r"\s*-\s*הרשמה$", "", name).strip()
+                if name and name not in seen:
+                    seen.add(name)
+                    cats.append(name)
+            t["categories"] = cats[:20]
+            intro = re.split(r"\s*1\.\s*הרשמה", body)[0]
+            t["info"] = intro.strip()[:400]
+        except Exception as e:
+            print(f"(tournament {eid} details failed: {e})", file=sys.stderr)
+        out.append(t)
+    out.sort(key=lambda x: x.get("date") or "9999")
+    return out
+
+
 # ---------------------------------------------------------------- assembly
 def build_snapshot(existing_matches=None):
     existing_matches = existing_matches or {}
@@ -415,7 +471,9 @@ def build_snapshot(existing_matches=None):
             p.setdefault("teamKey", None)
             p.setdefault("lastMatches", [])
 
-    return {"players": players, "teams": teams, "matches": all_matches}
+    tournaments = scrape_tournaments()
+    print(f"tournaments: {len(tournaments)}", file=sys.stderr)
+    return {"players": players, "teams": teams, "matches": all_matches, "tournaments": tournaments}
 
 
 def _slim(m):
@@ -428,7 +486,7 @@ def write_firestore(snap):
     from google.cloud import firestore  # lazy import so --dry-run needs no credentials
     db = firestore.Client()
     now = dt.datetime.now(dt.timezone.utc).isoformat()
-    written = {"players": 0, "teams": 0, "matches": 0}
+    written = {"players": 0, "teams": 0, "matches": 0, "tournaments": 0}
 
     def upsert(coll_ref, doc_id, data, keep_prev_rating=False):
         ref = coll_ref.document(doc_id)
@@ -456,6 +514,15 @@ def write_firestore(snap):
     mc = db.collection("tttm").document("matches").collection("items")
     for mid, m in snap["matches"].items():
         written["matches"] += upsert(mc, mid, dict(m))
+
+    wc = db.collection("tttm").document("tournaments").collection("items")
+    keep_ids = set()
+    for t in snap.get("tournaments", []):
+        keep_ids.add(t["eventId"])
+        written["tournaments"] += upsert(wc, t["eventId"], dict(t))
+    for d in wc.stream():                       # תחרויות שהוסרו מהאתר
+        if d.id not in keep_ids:
+            wc.document(d.id).delete()
 
     db.collection("tttm").document("meta").collection("items").document("status").set({
         "lastRun": now,
@@ -503,6 +570,7 @@ def main():
             "players": {pid: {k: p.get(k) for k in ("name", "category", "rank", "rating", "teamKey")} for pid, p in snap["players"].items()},
             "teams": [{k: t.get(k) for k in ("teamKey", "league", "drawName", "position", "points", "nextMatch")} for t in snap["teams"]],
             "matches": len(snap["matches"]),
+            "tournaments": [{k: t.get(k) for k in ("eventId", "name", "date", "venue", "registrationUntil", "categories")} for t in snap.get("tournaments", [])],
         }
         print(json.dumps(summary, ensure_ascii=False, indent=1))
         return
