@@ -30,6 +30,7 @@
   <symbol id="ic-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 14.5a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1v.3a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-2.8-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7h-.3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.8l-.1-.1A2 2 0 1 1 7.1 3.9l.1.1a1.6 1.6 0 0 0 2.7-1.1v-.3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.8 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7h.3a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.4 1.2Z"/></symbol>
   <symbol id="ic-chart" viewBox="0 0 24 24"><path d="M4 20V4"/><path d="M4 20h16"/><rect x="7" y="12" width="3.2" height="5" rx="1"/><rect x="13" y="8" width="3.2" height="9" rx="1"/></symbol>
   <symbol id="ic-dots" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.6" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="ic-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.2"/></symbol>
   <symbol id="ic-logout" viewBox="0 0 24 24"><path d="M14 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2H14"/><path d="M17.5 12H9.5M14.5 8.5 18 12l-3.5 3.5"/></symbol>
   <symbol id="ic-bell" viewBox="0 0 24 24"><path d="M6.5 10a5.5 5.5 0 0 1 11 0c0 4 1.5 5.5 1.5 5.5H5S6.5 14 6.5 10Z"/><path d="M10.2 19a2 2 0 0 0 3.6 0"/></symbol>
   <symbol id="ic-pin" viewBox="0 0 24 24"><path d="M12 21s6.5-6 6.5-10.5a6.5 6.5 0 0 0-13 0C5.5 15 12 21 12 21Z"/><circle cx="12" cy="10.5" r="2.4"/></symbol>
@@ -55,6 +56,10 @@
     <form id="login-form" novalidate>
       <label for="phone" class="big-label">מספר הטלפון שלך</label>
       <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="050-1234567" required aria-describedby="login-msg">
+      <div id="pin-wrap" class="hidden">
+        <label for="pin" class="big-label">קוד כניסה אישי (לצוות)</label>
+        <input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="8" placeholder="••••" aria-describedby="login-msg">
+      </div>
       <button type="submit" class="btn btn-primary btn-xl" id="login-btn">כניסה</button>
       <p id="login-msg" class="msg" role="alert" aria-live="assertive"></p>
     </form>
@@ -99,6 +104,7 @@
     </nav>
     <div class="sidebar-foot">
       <div class="sb-user"><strong id="sidebar-name"></strong><span class="chip" id="sidebar-role"></span></div>
+      <button data-action="changeMyPin" class="only-staff"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-lock"/></svg>קוד כניסה</button>
       <button id="btn-logout-3"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-logout"/></svg>יציאה</button>
     </div>
   </aside>
@@ -133,6 +139,7 @@
       <button data-nav="publish" class="only-publisher"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-edit"/></svg>הודעה חדשה</button>
       <button data-nav="admin" class="only-admin"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-settings"/></svg>ניהול</button>
       <button data-nav="dashboard" class="only-admin"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-chart"/></svg>דשבורד</button>
+      <button data-action="changeMyPin" class="only-staff"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-lock"/></svg>קוד כניסה</button>
       <hr>
       <button id="btn-logout"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-logout"/></svg>יציאה</button>
       <button id="btn-close-drawer" class="secondary">סגור</button>
@@ -150,6 +157,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js"></script>
 <script src="config.js"></script>
-<script src="app.js?v=20260906c"></script>
+<script src="app.js?v=20260906d"></script>
 </body>
 </html>

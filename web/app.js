@@ -78,12 +78,28 @@
   const colData = qs => qs.docs.map(d => ({ id: d.id, ...d.data() }));
   const D = {
     settings: () => cached('settings', 6e5, async () => docData(await db.doc('settings/club').get()) || {}),
+    security: () => cached('security', 6e4, async () => docData(await db.doc('settings/security').get()) || {}),
     groups: () => cached('groups', 6e5, async () => colData(await db.collection('groups').get())),
     coaches: () => cached('coaches', 6e5, async () => colData(await db.collection('coaches').get())),
     venues: () => cached('venues', 6e5, async () => colData(await db.collection('venues').get())),
     teams: () => cached('teams', 3e5, async () => colData(await db.collection('tttm/teams/items').get())),
-    announcements: (n = 30) => cached('ann' + n, 12e4, async () =>
-      colData(await db.collection('announcements').where('publishAt', '<=', new Date().toISOString()).orderBy('publishAt', 'desc').limit(n).get())),
+    announcements: (n = 30) => cached('ann' + n, 12e4, async () => {
+      const now = new Date().toISOString(), col = db.collection('announcements');
+      let list;
+      if (isCoach()) {
+        list = colData(await col.where('publishAt', '<=', now).orderBy('publishAt', 'desc').limit(n).get());
+      } else {
+        // חוקי Firestore מאפשרים לקרוא רק לפי קהל היעד — לכן שואלים בנפרד לכל קהל שמותר לי
+        const qs = [col.where('audience', '==', 'all')];
+        if ((S.claims.playerIds || []).length) qs.push(col.where('audience', '==', 'players'));
+        for (const g of (S.claims.groupIds || [])) qs.push(col.where('audience', '==', 'group').where('groupId', '==', g));
+        const parts = await Promise.all(qs.map(q => q.get().then(colData, e => { console.warn('announcements query', e); return []; })));
+        const seen = new Set();
+        list = parts.flat().filter(a => a.publishAt && a.publishAt <= now && !seen.has(a.id) && seen.add(a.id))
+          .sort((a, b) => b.publishAt.localeCompare(a.publishAt)).slice(0, n);
+      }
+      return list;
+    }),
     player: id => cached('player:' + id, 3e5, async () => docData(await db.doc('players/' + id).get())),
     attendance: id => id ? cached('att:' + id, 3e5, async () => docData(await db.doc('attendance/' + id).get())) : Promise.resolve(null),
     syncStatus: () => cached('syncStatus', 6e4, async () => docData(await db.doc('meta/sync').get())),
@@ -109,11 +125,14 @@
     if (!user) { S.user = null; showLogin(); return; }
     try {
       const t = await user.getIdTokenResult();
-      S.user = user; S.claims = { role: t.claims.role || 'member', playerIds: t.claims.playerIds || [], canPublish: !!t.claims.canPublish, name: t.claims.name || '' };
+      S.user = user; S.claims = { role: t.claims.role || 'member', playerIds: t.claims.playerIds || [], groupIds: t.claims.groupIds || [], canPublish: !!t.claims.canPublish, name: t.claims.name || '' };
       // הטוקן נוצר בכניסה — אם שויכו לך שחקנים מאז, נמשוך אותם מהמסמך החי כדי שלא תצטרך להתנתק
       try {
         const live = docData(await db.doc('users/' + user.uid).get());
+        // הגישה בוטלה (הוסר/הושעה בניהול) — מנתקים מיד, גם אם המכשיר זכר את הכניסה
+        if (!live || live.disabled === true) { await auth.signOut(); S.cache.clear(); showLogin(!live ? 'המספר כבר לא רשום במערכת' : 'הגישה הושעתה — פנה למנהל המועדון'); return; }
         if (live) {
+          S.claims.pinSet = live.pinSet === true;
           if (Array.isArray(live.playerIds) && live.playerIds.length) S.claims.playerIds = live.playerIds;
           if (live.name) S.claims.name = live.name;
           if (live.canPublish === true) S.claims.canPublish = true;
@@ -144,6 +163,7 @@
     $$('.only-personal').forEach(el => el.classList.toggle('hidden', !hasPersonal()));
     $$('.only-league').forEach(el => el.classList.toggle('hidden', !(S.leagueTeams || []).length));
     $$('.only-admin').forEach(el => el.classList.toggle('hidden', !isAdmin()));
+    $$('.only-staff').forEach(el => el.classList.toggle('hidden', !isCoach()));
     $$('.only-publisher').forEach(el => el.classList.toggle('hidden', !canPublish()));
     $('#nav-me').classList.toggle('hidden', !hasPersonal());
   }
@@ -151,19 +171,28 @@
   $('#login-form').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = $('#login-btn'), msg = $('#login-msg'), phone = normalizePhone($('#phone').value);
+    const pinWrap = $('#pin-wrap'), pinEl = $('#pin'), pin = pinWrap.classList.contains('hidden') ? '' : pinEl.value.replace(/\D/g, '');
     msg.className = 'msg';
     if (!phone) { msg.textContent = 'נא להזין מספר נייד ישראלי תקין (10 ספרות)'; return; }
+    if (!pinWrap.classList.contains('hidden') && !pin) { msg.textContent = 'נא להזין את קוד הכניסה'; pinEl.focus(); return; }
     btn.disabled = true; btn.textContent = 'רגע…';
     try {
-      const r = await fetch(CFG.loginUrl.replace(/\/$/, '') + '/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) });
+      const r = await fetch(CFG.loginUrl.replace(/\/$/, '') + '/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pin ? { phone, pin } : { phone }) });
       const j = await r.json().catch(() => ({}));
       if (r.status === 404) { msg.innerHTML = `המספר לא רשום במערכת.<br>פנה למאמן: ${esc(CLUB.contactName)} <a href="${telHref(CLUB.contactPhone)}">${esc(fmtPhone(normalizePhone(CLUB.contactPhone)))}</a>`; }
-      else if (r.status === 429) msg.textContent = 'יותר מדי ניסיונות. נסה שוב בעוד שעה.';
+      else if (j.error === 'pin_required') {
+        // מאמן/מנהל — גורם שני: קוד אישי
+        pinWrap.classList.remove('hidden'); pinEl.value = '';
+        msg.textContent = 'זוהית כאיש צוות — הזן את קוד הכניסה האישי שלך'; setTimeout(() => pinEl.focus(), 50);
+      }
+      else if (j.error === 'bad_pin') { pinEl.value = ''; msg.textContent = j.message || 'קוד שגוי'; setTimeout(() => pinEl.focus(), 50); }
+      else if (r.status === 429) msg.textContent = j.message || 'יותר מדי ניסיונות. נסה שוב בעוד שעה.';
       else if (!r.ok) msg.textContent = j.message || 'שגיאה בכניסה, נסה שוב';
-      else { msg.className = 'msg ok'; msg.textContent = 'ברוך הבא!'; await auth.signInWithCustomToken(j.token); }
+      else { msg.className = 'msg ok'; msg.textContent = 'ברוך הבא!'; pinEl.value = ''; pinWrap.classList.add('hidden'); await auth.signInWithCustomToken(j.token); }
     } catch (err) { console.error(err); msg.textContent = 'אין חיבור לשרת. בדוק את האינטרנט ונסה שוב.'; }
     btn.disabled = false; btn.textContent = 'כניסה';
   });
+  $('#phone').addEventListener('input', () => { $('#pin-wrap').classList.add('hidden'); $('#pin').value = ''; });
   $('#btn-logout').addEventListener('click', async () => { closeDrawer(); await auth.signOut(); S.cache.clear(); location.hash = ''; });
 
   // ---------------------------------------------------------------- router
@@ -494,7 +523,7 @@
       ${a.imageUrl ? `<img src="${esc(a.imageUrl)}" alt="" style="width:100%;border-radius:12px;margin:6px 0">` : ''}
       <p style="white-space:pre-wrap">${linkify(esc(a.body || ''))}</p>
       <div class="small muted">${fmtDate(a.publishAt.slice(0, 10))}${a.authorName ? ' · ' + esc(a.authorName) : ''}${a.audience === 'group' && a.groupName ? ' · ' + esc(a.groupName) : ''}</div>
-      ${isAdmin() || (canPublish() && a.authorId === S.user.uid) ? `<div class="row" style="margin-top:8px"><button class="btn btn-secondary btn-sm" data-action="editAnn" data-id="${a.id}">עריכה</button><button class="btn btn-danger btn-sm" data-action="delAnn" data-id="${a.id}">מחיקה</button></div>` : ''}
+      ${isAdmin() || (canPublish() && a.authorId === S.user.uid) ? `<div class="row" style="margin-top:8px"><button class="btn btn-secondary btn-sm" data-action="editAnn" data-id="${esc(a.id)}">עריכה</button><button class="btn btn-danger btn-sm" data-action="delAnn" data-id="${esc(a.id)}">מחיקה</button></div>` : ''}
     </div>`).join('');
   };
   const linkify = s => s.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
@@ -536,6 +565,7 @@
     <button class="btn" style="justify-content:flex-start;font-size:1.05rem;color:var(--red)" id="btn-logout-2"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-logout"/></svg>יציאה</button></div>
     <p class="center small muted">מחובר: ${esc(S.claims.name || '')} · ${roleLabel(S.claims.role)} · ${esc(fmtPhone(S.user.uid))}</p>`;
   document.addEventListener('click', e => { if (e.target.id === 'btn-logout-2' || e.target.id === 'btn-logout-3') $('#btn-logout').click(); });
+  document.addEventListener('click', e => { const el = e.target.closest && e.target.closest('#drawer [data-action], .sidebar [data-action]'); if (el) ACTIONS[el.dataset.action]?.(el, e); });
 
 
   // ---------------------------------------------------------------- calendar (יומן)
@@ -586,6 +616,7 @@
     $('form', modal).addEventListener('submit', async e => {
       e.preventDefault();
       const f = e.target, email = f.email.value.trim(), timing = [f.week.checked && 'week', f.sameDay.checked && 'sameDay'].filter(Boolean);
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 120) return toast('כתובת מייל לא תקינה');
       if (!timing.length) return toast('בחר לפחות מועד אחד');
       try {
         await db.collection('reminders').add({ email, scope, [scope === 'match' ? 'matchId' : 'teamId']: id, timing, sentFor: [], unsubscribeToken: uid(), ownerUid: S.user.uid, createdAt: new Date().toISOString() });
@@ -594,6 +625,65 @@
     });
     setTimeout(() => $('#rem-email').focus(), 50);
   }
+  // ---------------------------------------------------------------- קוד כניסה (PIN) לצוות
+  // אותה נוסחה כמו ב-Worker: SHA-256("<phone>:<pin>") — ה-hash בלבד נשמר, אף פעם לא הקוד עצמו
+  async function pinHash(phone, pin) {
+    const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${phone}:${pin}`));
+    return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  const PIN_RE = /^\d{4,8}$/;
+  // חלונית קוד: mode 'admin' (המנהל קובע קוד למשתמש) או 'self' (איש צוות מחליף את הקוד שלו דרך ה-Worker)
+  function openPinModal({ title, sub, askCurrent, onSave }) {
+    const html = `<div class="modal" id="modal"><div class="modal-panel"><h2><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-lock"/></svg> ${esc(title)}</h2><p class="muted small">${esc(sub || '')}</p>
+      <form data-form="pin" autocomplete="off">
+      ${askCurrent ? '<label for="pin-cur">הקוד הנוכחי</label><input id="pin-cur" name="cur" type="password" inputmode="numeric" maxlength="8" required placeholder="••••">' : ''}
+      <label for="pin-new">קוד חדש (4–8 ספרות)</label><input id="pin-new" name="pin" type="password" inputmode="numeric" maxlength="8" required placeholder="••••">
+      <label for="pin-new2">שוב, לאימות</label><input id="pin-new2" name="pin2" type="password" inputmode="numeric" maxlength="8" required placeholder="••••">
+      <button class="btn btn-primary" type="submit">שמור קוד</button><button class="btn btn-secondary" type="button" data-close style="margin-top:8px">ביטול</button></form></div></div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+    const modal = $('#modal'); pushModalState();
+    modal.addEventListener('click', e => { if (e.target === modal || e.target.dataset.close != null) closeModal(); });
+    $('form', modal).addEventListener('submit', async e => {
+      e.preventDefault();
+      const f = e.target, pin = f.pin.value.trim(), pin2 = f.pin2.value.trim(), cur = askCurrent ? f.cur.value.trim() : '';
+      if (!PIN_RE.test(pin)) return toast('הקוד חייב להיות 4 עד 8 ספרות');
+      if (pin !== pin2) return toast('הקודים אינם זהים');
+      if (/^(\d)\1+$/.test(pin) || '12345678'.includes(pin) || '87654321'.includes(pin)) return toast('בחר קוד פחות צפוי (לא 1234 / 1111 וכדומה)');
+      const btn = $('button[type=submit]', f); btn.disabled = true;
+      try { await onSave(pin, cur); closeModal(); }
+      catch (err) { console.error(err); toast(err.message || 'שגיאה בשמירת הקוד'); btn.disabled = false; }
+    });
+    setTimeout(() => $(askCurrent ? '#pin-cur' : '#pin-new').focus(), 50);
+  }
+  // המנהל קובע קוד ראשוני (או מאפס) למאמן/מנהל — נכתב ישירות ל-Firestore (מותר רק למנהל לפי החוקים)
+  ACTIONS.setPin = async el => {
+    const id = el.dataset.id, name = el.dataset.name || fmtPhone(id);
+    openPinModal({ title: `קוד כניסה — ${name}`, sub: 'מסור את הקוד לאיש הצוות בעל-פה או בהודעה פרטית. הוא יוכל להחליף אותו בעצמו מהתפריט.', async onSave(pin) {
+      await db.doc(`users/${id}/private/auth`).set({ pinHash: await pinHash(id, pin), pinSetAt: new Date().toISOString(), setBy: S.user.uid });
+      await db.doc('users/' + id).update({ pinSet: true });
+      if (id === S.user.uid) S.claims.pinSet = true;
+      S.cache.delete('adminUsers'); toast('✅ הקוד נשמר'); route();
+    } });
+  };
+  // איש צוות מחליף את הקוד של עצמו — דרך ה-Worker, שדורש את הקוד הנוכחי
+  ACTIONS.changeMyPin = async () => {
+    closeDrawer();
+    const hasPin = S.claims.pinSet === true;
+    openPinModal({ title: hasPin ? 'החלפת קוד הכניסה שלי' : 'קביעת קוד כניסה', sub: 'הקוד נדרש בכל כניסה, בנוסף למספר הטלפון.', askCurrent: hasPin, async onSave(pin, cur) {
+      const idToken = await S.user.getIdToken();
+      const r = await fetch(CFG.loginUrl.replace(/\/$/, '') + '/set-pin', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken }, body: JSON.stringify(hasPin ? { pin, currentPin: cur } : { pin }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.message || (r.status === 404 ? 'השרת עדיין לא תומך בקודים — פנה למנהל' : 'שגיאה'));
+      S.claims.pinSet = true; toast('✅ הקוד עודכן');
+    } });
+  };
+  ACTIONS.toggleRequirePin = async el => {
+    const on = el.dataset.val === '1';
+    if (on && !confirm('מרגע ההפעלה, מאמן או מנהל שעדיין לא נקבע לו קוד לא יוכל להיכנס עד שתקבע לו. להפעיל?')) return;
+    await db.doc('settings/security').set({ requirePin: on, updatedAt: new Date().toISOString(), updatedBy: S.user.uid }, { merge: true });
+    invalidate('security'); toast(on ? 'קוד כניסה הוא עכשיו חובה לכל הצוות' : 'קוד כניסה אינו חובה (מומלץ להפעיל)'); route();
+  };
+
   async function handleUnsubscribeLink() {
     const m = location.hash.match(/#unsubscribe=([^:]+):(.+)/);
     if (!m) return;
@@ -646,7 +736,7 @@
       <label for="a-aud">למי</label><select id="a-aud" name="audience" ${isAdmin() ? '' : ''}>
         ${isAdmin() ? `<option value="all" ${!a || a.audience === 'all' ? 'selected' : ''}>לכולם</option><option value="players" ${a?.audience === 'players' ? 'selected' : ''}>שחקנים והורים בלבד</option><option value="coaches" ${a?.audience === 'coaches' ? 'selected' : ''}>מאמנים בלבד</option>` : ''}
         <option value="group" ${a?.audience === 'group' || !isAdmin() ? 'selected' : ''}>הורי קבוצה מסוימת</option></select>
-      <div id="grp-wrap" class="${(a?.audience === 'group' || !isAdmin()) ? '' : 'hidden'}"><label for="a-grp">קבוצה</label><select id="a-grp" name="groupId">${myGroups.map(g => `<option value="${g.id}" ${a?.groupId === g.id ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></div>
+      <div id="grp-wrap" class="${(a?.audience === 'group' || !isAdmin()) ? '' : 'hidden'}"><label for="a-grp">קבוצה</label><select id="a-grp" name="groupId">${myGroups.map(g => `<option value="${esc(g.id)}" ${a?.groupId === g.id ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></div>
       <label class="check"><input type="checkbox" name="urgent" ${a?.urgent ? 'checked' : ''}> דחוף — פס בראש מסך הבית + התראה לטלפון</label>
       <label for="a-when">תזמון פרסום</label><input id="a-when" name="publishAt" type="datetime-local" value="${esc(a?.publishAt ? a.publishAt.slice(0, 16) : now.toISOString().slice(0, 16))}">
       <button class="btn btn-primary btn-xl" type="submit" style="margin-top:14px">${editId ? 'שמור שינויים' : 'פרסם'}</button>
@@ -685,10 +775,16 @@
   // ---------------------------------------------------------------- admin
   SCREENS.admin = async (tab = 'sync') => {
     const seg = `<div class="seg">${[['sync', 'סנכרון'], ['access', 'גישות'], ['players', 'שחקנים'], ['groups', 'קבוצות'], ['coaches', 'מאמנים'], ['venues', 'אולמות']].map(([k, t]) => `<button data-seg="${k}" class="${k === tab ? 'active' : ''}">${t}</button>`).join('')}</div>`;
-    const [users, players, groups, coaches, venues] = await Promise.all([colData(await db.collection('users').get()), colData(await db.collection('players').get()), D.groups(), D.coaches(), D.venues()]);
+    const [users, players, groups, coaches, venues, security] = await Promise.all([colData(await db.collection('users').get()), colData(await db.collection('players').get()), D.groups(), D.coaches(), D.venues(), D.security()]);
+    const staff = users.filter(u => ['coach', 'admin'].includes(u.role)), staffNoPin = staff.filter(u => !u.pinSet);
+    const securityCard = `<div class="card"><div class="card-title"><span class="ico">${icoSvg('lock')}</span>אבטחת כניסה לצוות</div>
+      <p class="small muted">מספר טלפון לבדו אינו סוד — לכן מאמן ומנהל נכנסים גם עם קוד אישי. קבע קוד לכל איש צוות, ואז הפעל "חובה קוד". איש צוות יכול להחליף את הקוד שלו מהתפריט.</p>
+      <div class="row" style="margin:8px 0"><span class="chip ${staffNoPin.length ? 'orange' : 'green'}">${staff.length - staffNoPin.length}/${staff.length} מאנשי הצוות עם קוד</span><span class="chip ${security.requirePin ? 'green' : 'gray'}">${security.requirePin ? 'חובה קוד: פעיל' : 'חובה קוד: כבוי'}</span></div>
+      ${staffNoPin.length ? `<p class="small">ללא קוד: ${staffNoPin.map(u => esc(u.name || fmtPhone(u.id))).join(', ')}</p>` : ''}
+      <button class="btn ${security.requirePin ? 'btn-secondary' : 'btn-primary'} btn-sm" data-action="toggleRequirePin" data-val="${security.requirePin ? '0' : '1'}" ${!security.requirePin && staffNoPin.length ? 'title="קבע קודם קוד לכל הצוות"' : ''}>${security.requirePin ? 'בטל חובת קוד' : 'הפעל חובת קוד לכל הצוות'}</button></div>`;
     S.cache.set('adminUsers', { t: Date.now(), v: users }); S.cache.set('adminPlayers', { t: Date.now(), v: players });
     const pname = id => players.find(p => p.id === id)?.name || id;
-    const playerOpts = sel => `<option value="">— חבר מועדון (ללא שחקן) —</option>` + players.sort((a, b) => a.name.localeCompare(b.name, 'he')).map(p => `<option value="${p.id}" ${sel === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+    const playerOpts = sel => `<option value="">— חבר מועדון (ללא שחקן) —</option>` + players.sort((a, b) => a.name.localeCompare(b.name, 'he')).map(p => `<option value="${esc(p.id)}" ${sel === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
     const sync = await D.syncStatus().catch(() => null);
     const ago = iso => {
       if (!iso) return '—';
@@ -724,7 +820,7 @@
             ${warnRow('קבוצות בלי מאמן משויך', w.groupsWithoutCoach, '')}
             ${warnRow('משתמשי צוות בלי טלפון', w.staffWithoutPhone, '')}
           </ul></div>` : '<div class="card"><p class="muted">אין אזהרות — כל הנתונים תקינים.</p></div>'}`,
-      access: `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-edit"/></svg></span>הוספת מספר</div><form data-form="addUser" class="form-grid">
+      access: securityCard + `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-edit"/></svg></span>הוספת מספר</div><form data-form="addUser" class="form-grid">
           <label>מספר טלפון</label><input name="phone" type="tel" inputmode="tel" required placeholder="050-1234567" style="direction:ltr">
           <label>שם</label><input name="name" required placeholder="שם מלא">
           <label>קישור לשחקן</label><select name="playerId">${playerOpts()}</select>
@@ -734,33 +830,35 @@
           <p class="small muted">שורה לכל אדם: <code>טלפון, שם, מזהה-שחקן-או-ריק, סוג</code>. לדוגמה:<br><code>0501234567, רונית כהן, ${players[0]?.id || 'abc123'}, parent</code></p>
           <form data-form="importUsers"><textarea name="csv" placeholder="0501234567, שם, מזהה שחקן, parent"></textarea><button class="btn btn-secondary" type="submit">ייבא</button></form></details></div>
         <div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-users"/></svg></span>מורשי כניסה (${users.length})</div><input type="search" placeholder="חיפוש לפי שם או טלפון" data-filter="#users-list" style="margin-bottom:10px">
-          <ul class="list" id="users-list">${users.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he')).map(u => `<li class="user-row" data-search="${esc([u.name || '', u.id, '0' + String(u.id).replace(/^972/, ''), fmtPhone(u.id)].join(' '))}"><div class="info"><div class="n">${esc(u.name || '—')} <span class="chip ${u.role === 'admin' ? 'orange' : u.role === 'coach' ? 'green' : ''}">${roleLabel(u.role)}</span>${u.canPublish ? '<span class="chip green">מפרסם</span>' : ''}</div>
+          <ul class="list" id="users-list">${users.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he')).map(u => `<li class="user-row" data-search="${esc([u.name || '', u.id, '0' + String(u.id).replace(/^972/, ''), fmtPhone(u.id)].join(' '))}"><div class="info"><div class="n">${esc(u.name || '—')} <span class="chip ${u.role === 'admin' ? 'orange' : u.role === 'coach' ? 'green' : ''}">${roleLabel(u.role)}</span>${u.canPublish ? '<span class="chip green">מפרסם</span>' : ''}${['coach', 'admin'].includes(u.role) ? (u.pinSet ? '<span class="chip green">🔒 קוד</span>' : '<span class="chip orange">ללא קוד</span>') : ''}${u.disabled ? '<span class="chip orange">מושעה</span>' : ''}</div>
             <div class="p">${esc(fmtPhone(u.id))}</div><div class="small muted">${(u.playerIds || []).map(pname).map(esc).join(', ')}${u.lastLogin ? ' · כניסה אחרונה ' + fmtDate(u.lastLogin.slice(0, 10), false) : ' · <b>לא נכנס מעולם</b>'}</div></div>
-            ${u.role === 'coach' ? `<button class="btn btn-sm ${u.canPublish ? 'btn-secondary' : 'btn-primary'}" data-action="togglePublish" data-id="${u.id}" data-val="${u.canPublish ? '0' : '1'}" title="רשאי לפרסם הודעות">${u.canPublish ? '🔕' : '✍️'}</button>` : ''}
-            ${u.id !== S.user.uid ? `<button class="btn btn-danger btn-sm" data-action="removeUser" data-id="${u.id}">הסר</button>` : ''}</li>`).join('')}</ul></div>`,
+            ${['coach', 'admin'].includes(u.role) ? `<button class="btn btn-sm ${u.pinSet ? 'btn-secondary' : 'btn-primary'}" data-action="setPin" data-id="${esc(u.id)}" data-name="${esc(u.name || '')}" title="${u.pinSet ? 'אפס קוד כניסה' : 'קבע קוד כניסה'}">🔒</button>` : ''}
+            ${u.role === 'coach' ? `<button class="btn btn-sm ${u.canPublish ? 'btn-secondary' : 'btn-primary'}" data-action="togglePublish" data-id="${esc(u.id)}" data-val="${u.canPublish ? '0' : '1'}" title="רשאי לפרסם הודעות">${u.canPublish ? '🔕' : '✍️'}</button>` : ''}
+            ${u.id !== S.user.uid ? `<button class="btn btn-secondary btn-sm" data-action="toggleDisabled" data-id="${esc(u.id)}" data-val="${u.disabled ? '0' : '1'}" title="${u.disabled ? 'החזר גישה' : 'השעה גישה'}">${u.disabled ? '▶️' : '⏸️'}</button><button class="btn btn-danger btn-sm" data-action="removeUser" data-id="${esc(u.id)}">הסר</button>` : ''}</li>`).join('')}</ul></div>`,
       players: `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-ball"/></svg></span>שחקנים (${players.length})</div><p class="small muted">השחקנים מגיעים אוטומטית מאפליקציית הנוכחות (סנכרון יומי). כאן מקשרים מספר TTTM ומוסיפים טלפונים.</p>
         <form data-form="addPlayer" class="row" style="margin-bottom:10px"><input name="name" placeholder="שם שחקן חדש" required><button class="btn btn-secondary btn-sm" type="submit">הוסף</button></form>
         <ul class="list">${players.map(p => `<li><div class="row spread"><div><b>${esc(p.name)}</b> <span class="chip gray">${esc(groups.find(g => g.id === p.groupId)?.name || 'ללא קבוצה')}</span>${p.tttmId ? `<span class="chip">TTTM ${esc(p.tttmId)}</span>` : ''}${(p.leagueTeams || []).map(k => `<span class="chip orange">${esc(k)}</span>`).join('')}</div>
-          <button class="btn btn-secondary btn-sm" data-action="editPlayer" data-id="${p.id}">עריכה</button></div>
+          <button class="btn btn-secondary btn-sm" data-action="editPlayer" data-id="${esc(p.id)}">עריכה</button></div>
           <div class="small muted">${(p.phones || []).map(fmtPhone).map(esc).join(' · ') || 'אין מספרים מקושרים'}</div>
-          <div class="row" style="margin-top:6px"><form data-form="addPhoneToPlayer" class="row" style="flex:1"><input type="hidden" name="playerId" value="${p.id}"><input name="phone" type="tel" placeholder="הוסף מספר של הורה" style="direction:ltr;min-height:48px"><input name="name" placeholder="שם ההורה" style="min-height:48px"><button class="btn btn-primary btn-sm" type="submit">+</button></form></div></li>`).join('')}</ul></div>`,
+          <div class="row" style="margin-top:6px"><form data-form="addPhoneToPlayer" class="row" style="flex:1"><input type="hidden" name="playerId" value="${esc(p.id)}"><input name="phone" type="tel" placeholder="הוסף מספר של הורה" style="direction:ltr;min-height:48px"><input name="name" placeholder="שם ההורה" style="min-height:48px"><button class="btn btn-primary btn-sm" type="submit">+</button></form></div></li>`).join('')}</ul></div>`,
       groups: `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-calendar"/></svg></span>קבוצות ולוח אימונים</div><p class="small muted">הקבוצות מסונכרנות מאפליקציית הנוכחות. אפשר לערוך כאן מקום ומאמנים.</p>
-        ${groups.map(g => `<form data-form="saveGroup" class="form-grid" style="border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:12px"><input type="hidden" name="id" value="${g.id}">
+        ${groups.map(g => `<form data-form="saveGroup" class="form-grid" style="border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:12px"><input type="hidden" name="id" value="${esc(g.id)}">
           <div class="row"><input name="name" value="${esc(g.name || '')}" placeholder="שם הקבוצה" required><select name="venue">${['', ...venues.map(v => v.name)].map(v => `<option ${g.venue === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></div>
           <div class="row">${HEB_DAYS.map((d, i) => `<label class="check" style="margin:4px 0"><input type="checkbox" name="day${i}" ${(g.days || []).some(x => x === i || x === d) ? 'checked' : ''}>${d.slice(0, 1)}׳</label>`).join('')}</div>
           <div class="row"><input name="startTime" type="time" value="${esc(g.startTime || '')}"><input name="endTime" type="time" value="${esc(g.endTime || '')}"></div>
-          <label>מאמנים</label><div class="row">${coaches.map(c => `<label class="check" style="margin:4px 0"><input type="checkbox" name="coach_${c.id}" ${(g.coachIds || []).includes(c.id) ? 'checked' : ''}>${esc(c.name)}</label>`).join('') || '<span class="muted small">הוסף מאמנים בלשונית מאמנים</span>'}</div>
+          <label>מאמנים</label><div class="row">${coaches.map(c => `<label class="check" style="margin:4px 0"><input type="checkbox" name="coach_${esc(c.id)}" ${(g.coachIds || []).includes(c.id) ? 'checked' : ''}>${esc(c.name)}</label>`).join('') || '<span class="muted small">הוסף מאמנים בלשונית מאמנים</span>'}</div>
           <button class="btn btn-secondary btn-sm" type="submit">שמור</button></form>`).join('')}
         <form data-form="saveGroup" class="row"><input type="hidden" name="id" value=""><input name="name" placeholder="קבוצה חדשה" required><button class="btn btn-primary btn-sm" type="submit">הוסף</button></form></div>`,
       coaches: `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-whistle"/></svg></span>מאמנים</div>
-        ${coaches.map(c => `<form data-form="saveCoach" class="form-grid" style="border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:12px"><input type="hidden" name="id" value="${c.id}">
+        ${coaches.map(c => `<form data-form="saveCoach" class="form-grid" style="border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:12px"><input type="hidden" name="id" value="${esc(c.id)}">
           <div class="row"><input name="name" value="${esc(c.name || '')}" placeholder="שם" required><input name="phone" value="${esc(c.phone || '')}" placeholder="טלפון" style="direction:ltr"></div>
+          <label class="check"><input type="checkbox" name="hidePhone" ${c.hidePhone ? 'checked' : ''}> הסתר את הטלפון מחברי המועדון (יוצג רק למנהל)</label>
           <input name="photoUrl" value="${esc(c.photoUrl || '')}" placeholder="קישור לתמונה (assets/coach-x.jpg)">
           <input name="venues" value="${esc((c.venues || []).join(', '))}" placeholder="איפה מאמן (מופרד בפסיק)"><input name="bio" value="${esc(c.bio || '')}" placeholder="משפט עליו (אופציונלי)">
-          <div class="row"><button class="btn btn-secondary btn-sm" type="submit">שמור</button><button class="btn btn-danger btn-sm" type="button" data-action="delCoach" data-id="${c.id}">מחק</button></div></form>`).join('')}
+          <div class="row"><button class="btn btn-secondary btn-sm" type="submit">שמור</button><button class="btn btn-danger btn-sm" type="button" data-action="delCoach" data-id="${esc(c.id)}">מחק</button></div></form>`).join('')}
         <form data-form="saveCoach" class="row"><input type="hidden" name="id" value=""><input name="name" placeholder="מאמן חדש" required><button class="btn btn-primary btn-sm" type="submit">הוסף</button></form></div>`,
       venues: `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-pin"/></svg></span>אולמות</div>
-        ${venues.map(v => `<form data-form="saveVenue" class="row" style="margin-bottom:10px"><input type="hidden" name="id" value="${v.id}"><input name="name" value="${esc(v.name)}" required><input name="address" value="${esc(v.address || '')}" placeholder="כתובת לניווט"><button class="btn btn-secondary btn-sm" type="submit">שמור</button><button class="btn btn-danger btn-sm" type="button" data-action="delVenue" data-id="${v.id}">מחק</button></form>`).join('')}
+        ${venues.map(v => `<form data-form="saveVenue" class="row" style="margin-bottom:10px"><input type="hidden" name="id" value="${esc(v.id)}"><input name="name" value="${esc(v.name)}" required><input name="address" value="${esc(v.address || '')}" placeholder="כתובת לניווט"><button class="btn btn-secondary btn-sm" type="submit">שמור</button><button class="btn btn-danger btn-sm" type="button" data-action="delVenue" data-id="${esc(v.id)}">מחק</button></form>`).join('')}
         <form data-form="saveVenue" class="row"><input type="hidden" name="id" value=""><input name="name" placeholder="שם האולם" required><input name="address" placeholder="כתובת"><button class="btn btn-primary btn-sm" type="submit">הוסף</button></form>
         <p class="small muted" style="margin-top:10px">שינוי הרשאות (מאמן→מפרסם, הוספת מנהל) נכנס לתוקף בכניסה הבאה של אותו משתמש.</p></div>`,
     };
@@ -787,10 +885,16 @@
     }
     toast(`יובאו ${ok}${bad.length ? `, נכשלו ${bad.length}` : ''}`, 4000); if (bad.length) alert('שורות שלא יובאו:\n' + bad.join('\n')); route();
   };
+  ACTIONS.toggleDisabled = async el => {
+    const on = el.dataset.val === '1';
+    await db.doc('users/' + el.dataset.id).update({ disabled: on, updatedAt: new Date().toISOString() });
+    toast(on ? 'הגישה הושעתה — ינותק בפתיחה הבאה של האפליקציה' : 'הגישה הוחזרה'); route();
+  };
   ACTIONS.removeUser = async el => {
     if (!confirm('להסיר את הגישה של ' + fmtPhone(el.dataset.id) + '?')) return;
     const u = docData(await db.doc('users/' + el.dataset.id).get());
     for (const pid of (u?.playerIds || [])) await db.doc('players/' + pid).update({ phones: FieldValue.arrayRemove(el.dataset.id) }).catch(() => {});
+    await db.doc('users/' + el.dataset.id + '/private/auth').delete().catch(() => {});
     await db.doc('users/' + el.dataset.id).delete(); toast('הוסר'); route();
   };
   ACTIONS.togglePublish = async el => { await db.doc('users/' + el.dataset.id).update({ canPublish: el.dataset.val === '1' }); toast(el.dataset.val === '1' ? 'המאמן רשאי לפרסם (מהכניסה הבאה שלו)' : 'הרשאת הפרסום בוטלה'); route(); };
@@ -803,9 +907,9 @@
   ACTIONS.editPlayer = async el => {
     const p = docData(await db.doc('players/' + el.dataset.id).get()), groups = await D.groups(), allTeams = await D.teams();
     const inTeam = k => (p.leagueTeams || []).includes(k);
-    const html = `<div class="modal" id="modal"><div class="modal-panel"><h2>${esc(p.name)}</h2><form data-form="savePlayer" class="form-grid"><input type="hidden" name="id" value="${p.id}">
+    const html = `<div class="modal" id="modal"><div class="modal-panel"><h2>${esc(p.name)}</h2><form data-form="savePlayer" class="form-grid"><input type="hidden" name="id" value="${esc(p.id)}">
       <label>שם מלא</label><input name="name" value="${esc(p.name)}" required><label>מספר שחקן ב-TTTM</label><input name="tttmId" value="${esc(p.tttmId || '')}" inputmode="numeric" placeholder="למשל 1439">
-      <label>קבוצה</label><select name="groupId"><option value="">ללא</option>${groups.map(g => `<option value="${g.id}" ${p.groupId === g.id ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select>
+      <label>קבוצה</label><select name="groupId"><option value="">ללא</option>${groups.map(g => `<option value="${esc(g.id)}" ${p.groupId === g.id ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select>
       ${allTeams.length ? `<label>סגל ליגה (מי שלא מסומן — לא רואה טבלאות ליגה)</label>
       ${allTeams.map(t => `<label class="check"><input type="checkbox" name="team_${esc(t.teamKey)}" ${inTeam(t.teamKey) ? 'checked' : ''}> ${esc(t.teamKey)} — ${esc(t.league || '')}</label>`).join('')}` : ''}
       <label class="check"><input type="checkbox" name="active" ${p.active !== false ? 'checked' : ''}> פעיל</label>
@@ -829,7 +933,7 @@
   };
   FORMS.saveCoach = async f => {
     const data = { name: f.name.value.trim(), updatedAt: new Date().toISOString() };
-    if (f.phone) Object.assign(data, { phone: normalizePhone(f.phone.value) || f.phone.value.trim(), photoUrl: f.photoUrl.value.trim(), venues: f.venues.value.split(',').map(s => s.trim()).filter(Boolean), bio: f.bio.value.trim() });
+    if (f.phone) Object.assign(data, { phone: f.hidePhone?.checked ? '' : (normalizePhone(f.phone.value) || f.phone.value.trim()), hidePhone: !!f.hidePhone?.checked, photoUrl: f.photoUrl.value.trim(), venues: f.venues.value.split(',').map(s => s.trim()).filter(Boolean), bio: f.bio.value.trim() });
     if (f.id.value) await db.doc('coaches/' + f.id.value).update(data); else await db.collection('coaches').add({ ...data, venues: [], createdAt: data.updatedAt });
     invalidate('coaches'); toast('נשמר'); route();
   };
