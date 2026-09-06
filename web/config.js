@@ -19,8 +19,8 @@ window.PORTAL_CONFIG = {
     fullName: 'מועדון טניס שולחן מבואות החרמון ע"ש רוני גלבוע',
     contactName: "שחר גילעד",
     contactPhone: "0504999149",
-    facebook: "https://www.facebook.com/ttcmh",
-    instagram: "https://www.instagram.com/ttcmh",
+    facebook: "https://www.facebook.com/TTCMH/",
+    instagram: "https://www.instagram.com/ttcmhr/",
     tttmClubUrl: "https://tttm.co.il/c/160/הפועל-מבואות-חרמון",
   },
 };
