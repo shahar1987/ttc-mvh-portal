@@ -86,6 +86,7 @@
       colData(await db.collection('announcements').where('publishAt', '<=', new Date().toISOString()).orderBy('publishAt', 'desc').limit(n).get())),
     player: id => cached('player:' + id, 3e5, async () => docData(await db.doc('players/' + id).get())),
     attendance: id => cached('att:' + id, 3e5, async () => docData(await db.doc('attendance/' + id).get())),
+    tournaments: () => cached('tournaments', 6e5, async () => colData(await db.collection('tttm/tournaments/items').get())),
     tttmPlayer: tid => cached('tp:' + tid, 3e5, async () => tid ? docData(await db.doc('tttm/players/items/' + tid).get()) : null),
   };
   function visibleAnnouncements(list) {
@@ -153,7 +154,7 @@
   $('#btn-logout').addEventListener('click', async () => { closeDrawer(); await auth.signOut(); S.cache.clear(); location.hash = ''; });
 
   // ---------------------------------------------------------------- router
-  const TITLES = { home: 'בית', me: 'האזור האישי', schedule: 'לוח אימונים', league: 'טבלאות ליגה', news: 'הודעות ואירועים', coaches: 'המאמנים שלנו', contact: 'צור קשר', social: 'עקבו אחרינו', partners: 'שותפים', more: 'עוד', publish: 'הודעה חדשה', admin: 'ניהול', dashboard: 'דשבורד' };
+  const TITLES = { home: 'בית', me: 'האזור האישי', schedule: 'לוח אימונים', league: 'טבלאות ליגה', tournaments: 'תחרויות', news: 'הודעות ואירועים', coaches: 'המאמנים שלנו', contact: 'צור קשר', social: 'עקבו אחרינו', partners: 'שותפים', more: 'עוד', publish: 'הודעה חדשה', admin: 'ניהול', dashboard: 'דשבורד' };
   const SCREENS = {};
   function navDepth() { return (history.state && history.state.idx) || 0; }
   function go(name, param) {
@@ -291,10 +292,19 @@
     const nm = mine.map(t => t.nextMatch && { ...t.nextMatch, teamKey: t.teamKey }).filter(Boolean).sort((a, b) => (a.date || '').localeCompare(b.date || ''))[0];
     if (nm) html += `<div class="card"><div class="card-title"><span class="ico">🏆</span>המשחק הבא — ${esc(nm.teamKey)}</div>${matchCard(nm)}<a class="card-more" data-go="league">טבלאות ליגה ←</a></div>`;
 
+    // next tournament — פתוח לכולם, גם למי שאינו רשום לליגה
+    const tours = (await D.tournaments()).filter(t => t.date && t.date >= new Date().toISOString().slice(0, 10)).sort((a, b) => a.date.localeCompare(b.date));
+    if (tours.length) html += `<div class="card tap" data-go="tournaments"><div class="card-title"><span class="ico">🏅</span>התחרות הקרובה</div>
+      <div class="big-number" style="font-size:1.35rem">${esc(tours[0].name)}</div>
+      <div>${fmtDate(tours[0].date, true)}${tours[0].venue ? ' · ' + esc(tours[0].venue) : ''}</div>
+      ${tours[0].registrationUntil ? `<div class="muted small">הרשמה עד ${esc(tours[0].registrationUntil)}</div>` : ''}
+      <a class="card-more">כל התחרויות ←</a></div>`;
+
     // shortcuts
     html += `<div class="shortcuts">
       <button data-go="schedule"><span class="ico">📅</span>לוח אימונים</button>
       ${mine.length ? '<button data-go="league"><span class="ico">🏆</span>טבלאות ליגה</button>' : ''}
+      <button data-go="tournaments"><span class="ico">🏅</span>תחרויות</button>
       <button data-go="coaches"><span class="ico">🧑‍🏫</span>מאמנים</button>
       <button data-go="contact"><span class="ico">📞</span>צור קשר</button>
       <a href="${esc(CLUB.facebook)}" target="_blank" rel="noopener"><span class="ico">📘</span>פייסבוק</a>
@@ -434,6 +444,23 @@
     </div>`).join('');
   };
 
+  SCREENS.tournaments = async () => {
+    const list = (await D.tournaments()).sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
+    if (!list.length) return empty('🏅', 'התחרויות יתעדכנו מאתר TTTM');
+    const today = new Date().toISOString().slice(0, 10);
+    const upcoming = list.filter(t => !t.date || t.date >= today);
+    const past = list.filter(t => t.date && t.date < today).reverse();
+    const card = t => `<div class="card">
+      <div class="card-title"><span class="ico">🏅</span>${esc(t.name)}</div>
+      <div class="row" style="margin-bottom:6px">${t.date ? `<span class="chip orange">${fmtDate(t.date, true)}</span>` : ''}${t.registrationUntil ? `<span class="chip">הרשמה עד ${esc(t.registrationUntil)}</span>` : ''}</div>
+      ${t.venue ? `<p class="small">📍 ${esc(t.venue)}</p>` : ''}
+      ${(t.categories || []).length ? `<div class="row">${t.categories.map(c => `<span class="chip gray">${esc(c)}</span>`).join('')}</div>` : ''}
+      ${t.info ? `<p class="small muted" style="margin-top:8px">${esc(t.info)}</p>` : ''}
+      <a class="btn btn-secondary btn-sm" style="margin-top:10px" href="${esc(t.url)}" target="_blank" rel="noopener">פרטים והרשמה ב-TTTM ↗</a></div>`;
+    return `${upcoming.length ? `<h2>תחרויות קרובות</h2>${upcoming.map(card).join('')}` : '<p class="muted">אין תחרויות קרובות שפורסמו</p>'}
+      ${past.length ? `<h2 style="margin-top:18px">תחרויות שהיו</h2>${past.map(card).join('')}` : ''}`;
+  };
+
   SCREENS.news = async () => {
     const list = visibleAnnouncements(await D.announcements(50));
     if (!list.length) return empty('📣', 'אין הודעות עדיין');
@@ -478,7 +505,7 @@
     <img src="assets/logo-club.png" alt="" style="max-width:60%;max-height:170px;margin:18px auto 6px;display:block" onerror="this.style.display='none'"><p class="muted">${esc(CLUB.fullName)}</p></div>`;
 
   SCREENS.more = async () => `<div class="card" style="padding:6px">
-    ${[['news', '📣', 'הודעות ואירועים'], ['coaches', '🧑‍🏫', 'המאמנים שלנו'], ['contact', '📞', 'צור קשר'], ['social', '📱', 'עקבו אחרינו'], ['partners', '🤝', 'שותפים'],
+    ${[['tournaments', '🏅', 'תחרויות'], ['news', '📣', 'הודעות ואירועים'], ['coaches', '🧑‍🏫', 'המאמנים שלנו'], ['contact', '📞', 'צור קשר'], ['social', '📱', 'עקבו אחרינו'], ['partners', '🤝', 'שותפים'],
       ...(canPublish() ? [['publish', '✍️', 'הודעה חדשה']] : []), ...(isAdmin() ? [['admin', '⚙️', 'ניהול'], ['dashboard', '📊', 'דשבורד']] : [])]
       .map(([k, i, t]) => `<button class="btn" style="justify-content:flex-start;font-size:1.1rem;border-bottom:1px solid var(--line);border-radius:0" data-go="${k}"><span style="font-size:1.4rem">${i}</span>${t}</button>`).join('')}
     <button class="btn" style="justify-content:flex-start;font-size:1.1rem;color:var(--red)" id="btn-logout-2">🚪 יציאה</button></div>
