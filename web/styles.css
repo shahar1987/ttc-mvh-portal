@@ -557,3 +557,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--blue-700); outl
 .topbar { padding: 0; }
 /* לוח הנוכחות לא מתנפח במסכים רחבים */
 .cal { max-width: 380px; margin-inline: auto; }
+
+/* הגנה: שום אלמנט לא ישבור את רוחב המסך בנייד */
+html, body { max-width: 100%; overflow-x: hidden; }
+svg.ic { max-width: 100%; }

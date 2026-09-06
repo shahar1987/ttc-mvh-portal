@@ -261,9 +261,9 @@
       </div>
       <div class="match-meta">${played ? fmtDate(m.date) : (m.date ? relDay(m.date) + ' · ' + fmtDate(m.date) : 'תאריך טרם נקבע')}
         ${m.isHome ? '· <b>בית</b>' : '· חוץ'}${m.drawName ? ' · ' + esc(m.drawName) : ''}</div>
-      ${!played && opts.remind !== false ? `<button class="btn btn-secondary btn-sm" style="margin:8px auto 0;display:flex" data-remind="match:${esc(m.matchId)}" data-label="${esc(m.homeName)} נגד ${esc(m.awayName)}"><svg class="ic" aria-hidden="true"><use href="#ic-bell"/></svg> הזכר לי</button>` : ''}`;
+      ${!played && opts.remind !== false ? `<button class="btn btn-secondary btn-sm" style="margin:8px auto 0;display:flex" data-remind="match:${esc(m.matchId)}" data-label="${esc(m.homeName)} נגד ${esc(m.awayName)}"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-bell"/></svg> הזכר לי</button>` : ''}`;
   }
-  const empty = (ico, text) => `<div class="empty"><div class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-${ico}"/></svg></div>${esc(text)}</div>`;
+  const empty = (ico, text) => `<div class="empty"><div class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-${ico}"/></svg></div>${esc(text)}</div>`;
   const dayList = days => (days || []).map(d => typeof d === 'number' ? HEB_DAYS[d] : d).join(', ');
 
   // ---------------------------------------------------------------- screens
@@ -272,11 +272,11 @@
     const vis = visibleAnnouncements(anns);
     const urgent = vis.find(a => a.urgent && (!a.expiresAt || a.expiresAt > new Date().toISOString()) && a.publishAt > new Date(Date.now() - 3 * 864e5).toISOString());
     let html = '';
-    if (urgent) html += `<div class="alert" data-go="news" role="alert"><div class="ttl"><svg class="ic" aria-hidden="true"><use href="#ic-megaphone"/></svg> הודעה דחופה</div>${esc(urgent.title)}${urgent.body ? '<div style="font-weight:400;margin-top:4px">' + esc(urgent.body).slice(0, 160) + '</div>' : ''}</div>`;
+    if (urgent) html += `<div class="alert" data-go="news" role="alert"><div class="ttl"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-megaphone"/></svg> הודעה דחופה</div>${esc(urgent.title)}${urgent.body ? '<div style="font-weight:400;margin-top:4px">' + esc(urgent.body).slice(0, 160) + '</div>' : ''}</div>`;
 
     // next training
     const next = nextTraining(groups, coaches, S.players[S.activePlayer]?.groupId);
-    if (next) html += `<div class="card tap" data-go="schedule"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-ball"/></svg></span>${hasPersonal() ? 'האימון הבא שלי' : 'האימון הקרוב במועדון'}</div>
+    if (next) html += `<div class="card tap" data-go="schedule"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-ball"/></svg></span>${hasPersonal() ? 'האימון הבא שלי' : 'האימון הקרוב במועדון'}</div>
       <div class="big-number" style="font-size:1.5rem">${next.when}</div><div>${esc(next.venue)}${next.coach ? ' · מאמן ' + esc(next.coach) : ''}</div><div class="muted small">${esc(next.groupName)}</div></div>`;
 
     // personal preview
@@ -284,7 +284,7 @@
       const p = S.players[S.activePlayer];
       const [att, tp] = await Promise.all([D.attendance(p.id), D.tttmPlayer(p.tttmId)]);
       const st = attStats(att);
-      html += `<div class="card tap" data-go="me"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-user"/></svg></span>האזור האישי של ${esc(firstName(p.name))}</div>
+      html += `<div class="card tap" data-go="me"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-user"/></svg></span>האזור האישי של ${esc(firstName(p.name))}</div>
         <div class="row" style="gap:16px"><div><span class="big-number">${st.month}</span><div class="small muted">אימונים החודש</div></div>
         ${tp?.rating != null ? `<div><span class="big-number">${Math.round(tp.rating)}</span><div class="small muted">דירוג TTTM</div></div>` : ''}
         ${st.streak ? `<div><span class="big-number">${st.streak}</span><div class="small muted">ברצף</div></div>` : ''}</div>
@@ -292,18 +292,18 @@
     }
 
     // announcements
-    html += `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-megaphone"/></svg></span>הודעות מהמועדון</div>`;
+    html += `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-megaphone"/></svg></span>הודעות מהמועדון</div>`;
     html += vis.length ? `<ul class="list">${vis.slice(0, 3).map(a => `<li><div style="font-weight:700">${esc(a.title)}</div><div class="small muted">${fmtDate(a.publishAt.slice(0, 10), false)}${a.authorName ? ' · ' + esc(a.authorName) : ''}</div></li>`).join('')}</ul><a class="card-more" data-go="news">כל ההודעות ←</a>` : '<p class="muted">אין הודעות חדשות</p>';
     html += '</div>';
 
     // next match — רק לשחקנים שמשחקים באותה ליגה (ולמאמנים/מנהלים)
     const mine = await myTeams();
     const nm = mine.map(t => t.nextMatch && { ...t.nextMatch, teamKey: t.teamKey }).filter(Boolean).sort((a, b) => (a.date || '').localeCompare(b.date || ''))[0];
-    if (nm) html += `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-trophy"/></svg></span>המשחק הבא — ${esc(nm.teamKey)}</div>${matchCard(nm)}<a class="card-more" data-go="league">טבלאות ליגה ←</a></div>`;
+    if (nm) html += `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-trophy"/></svg></span>המשחק הבא — ${esc(nm.teamKey)}</div>${matchCard(nm)}<a class="card-more" data-go="league">טבלאות ליגה ←</a></div>`;
 
     // next tournament — פתוח לכולם, גם למי שאינו רשום לליגה
     const tours = (await D.tournaments()).filter(t => t.date && t.date >= new Date().toISOString().slice(0, 10)).sort((a, b) => a.date.localeCompare(b.date));
-    if (tours.length) html += `<div class="card tap" data-go="tournaments"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-medal"/></svg></span>התחרות הקרובה</div>
+    if (tours.length) html += `<div class="card tap" data-go="tournaments"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-medal"/></svg></span>התחרות הקרובה</div>
       <div class="big-number" style="font-size:1.35rem">${esc(tours[0].name)}</div>
       <div>${fmtDate(tours[0].date, true)}${tours[0].venue ? ' · ' + esc(tours[0].venue) : ''}</div>
       ${tours[0].registrationUntil ? `<div class="muted small">הרשמה עד ${esc(tours[0].registrationUntil)}</div>` : ''}
@@ -311,13 +311,13 @@
 
     // shortcuts
     html += `<div class="shortcuts">
-      <button data-go="schedule"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-calendar"/></svg></span>לוח אימונים</button>
-      ${mine.length ? '<button data-go="league"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-trophy"/></svg></span>טבלאות ליגה</button>' : ''}
-      <button data-go="tournaments"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-medal"/></svg></span>תחרויות</button>
-      <button data-go="coaches"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-whistle"/></svg></span>מאמנים</button>
-      <button data-go="contact"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-phone"/></svg></span>צור קשר</button>
-      <a href="${esc(CLUB.facebook)}" target="_blank" rel="noopener"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-facebook"/></svg></span>פייסבוק</a>
-      <a href="${esc(CLUB.instagram)}" target="_blank" rel="noopener"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-instagram"/></svg></span>אינסטגרם</a>
+      <button data-go="schedule"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-calendar"/></svg></span>לוח אימונים</button>
+      ${mine.length ? '<button data-go="league"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-trophy"/></svg></span>טבלאות ליגה</button>' : ''}
+      <button data-go="tournaments"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-medal"/></svg></span>תחרויות</button>
+      <button data-go="coaches"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-whistle"/></svg></span>מאמנים</button>
+      <button data-go="contact"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-phone"/></svg></span>צור קשר</button>
+      <a href="${esc(CLUB.facebook)}" target="_blank" rel="noopener"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-facebook"/></svg></span>פייסבוק</a>
+      <a href="${esc(CLUB.instagram)}" target="_blank" rel="noopener"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-instagram"/></svg></span>אינסטגרם</a>
     </div>`;
     html += pushCard();
     return html;
@@ -369,7 +369,7 @@
     const st = attStats(att);
     html += `<h1>${esc(p.name)}</h1>`;
     // attendance
-    html += `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-check"/></svg></span>נוכחות באימונים</div>
+    html += `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-check"/></svg></span>נוכחות באימונים</div>
       <div class="stat-grid"><div><div class="big-number">${st.week}</div><div class="lbl">השבוע</div></div><div><div class="big-number">${st.month}</div><div class="lbl">החודש</div></div><div><div class="big-number">${st.season}</div><div class="lbl">העונה</div></div></div>
       <div class="row" style="justify-content:center;margin-top:12px">${st.pct != null ? `<span class="chip ${st.pct >= 75 ? 'green' : st.pct >= 50 ? 'orange' : 'red'}">${st.pct}% הגעה</span>` : ''}${st.streak ? `<span class="chip green">🔥 ${st.streak} אימונים ברצף</span>` : ''}</div>
       ${calendar(att)}
@@ -378,7 +378,7 @@
     if (tp) {
       const delta = tp.ratingPrev != null && tp.rating != null ? Math.round(tp.rating - tp.ratingPrev) : null;
       const team = teams.find(t => t.teamKey === tp.teamKey);
-      html += `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-trend"/></svg></span>הישגים ב-TTTM</div>
+      html += `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-trend"/></svg></span>הישגים ב-TTTM</div>
         <div class="row" style="gap:20px;align-items:flex-start">
           <div><div class="big-number">${tp.rating != null ? Math.round(tp.rating) : '—'} ${delta ? `<span style="font-size:1rem;color:${delta > 0 ? 'var(--green)' : 'var(--red)'}">${delta > 0 ? '▲' : '▼'} ${Math.abs(delta)}</span>` : ''}</div><div class="small muted">נקודות דירוג</div></div>
           ${tp.rank ? `<div><div class="big-number">#${tp.rank}</div><div class="small muted">דירוג ארצי${tp.rankDelta ? ` (${tp.rankDelta > 0 ? '+' : ''}${tp.rankDelta})` : ''}</div></div>` : ''}
@@ -387,12 +387,12 @@
         ${(tp.lastMatches || []).length ? `<h3 style="margin-top:14px">המשחקים האחרונים</h3><ul class="list">${tp.lastMatches.map(m => `<li class="row spread"><div><b>${m.won ? '✅' : '❌'} ${esc(m.opponent)}</b>${m.doubles ? ' <span class="chip gray">זוגות</span>' : ''}<div class="small muted">${fmtDate(m.date, false)} · נגד ${esc(m.opponentTeam)}</div></div><div class="big-number" style="font-size:1.3rem">${esc(m.sets)}</div></li>`).join('')}</ul>` : ''}
         ${team?.nextMatch ? `<h3 style="margin-top:14px">המשחק הבא של ${esc(tp.teamKey)}</h3>${matchCard(team.nextMatch)}` : ''}
         <a class="small" href="${esc(CLUB.tttmClubUrl)}" target="_blank" rel="noopener">לדף המועדון ב-TTTM ↗</a></div>`;
-    } else if (p.tttmId) html += `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-trend"/></svg></span>הישגים ב-TTTM</div><p class="muted">הנתונים יופיעו לאחר ריצת הסקרייפר הראשונה</p></div>`;
+    } else if (p.tttmId) html += `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-trend"/></svg></span>הישגים ב-TTTM</div><p class="muted">הנתונים יופיעו לאחר ריצת הסקרייפר הראשונה</p></div>`;
     // group
     const g = groups.find(x => x.id === p.groupId);
     if (g) {
       const mates = await groupMates(g.id, p.id);
-      html += `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-users"/></svg></span>הקבוצה שלי — ${esc(g.name)}</div>
+      html += `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-users"/></svg></span>הקבוצה שלי — ${esc(g.name)}</div>
         <p>${esc(dayList(g.days))} ${timeRange(g)}<br>${esc(g.venue || '')}</p>
         <p class="muted small">מאמן: ${esc((g.coachIds || []).map(id => coaches.find(c => c.id === id)?.name).filter(Boolean).join(', ') || '—')}</p>
         ${mates.length ? `<div class="row">${mates.map(n => `<span class="chip gray">${esc(n)}</span>`).join('')}</div>` : ''}</div>`;
@@ -427,7 +427,7 @@
     const dayOrder = g => Math.min(...(g.days || []).map(d => typeof d === 'number' ? d : HEB_DAYS.indexOf(d)), 9);
     return Object.entries(byVenue).map(([v, gs]) => {
       const ven = venues.find(x => x.name === v);
-      return `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-pin"/></svg></span>${esc(v)}</div>
+      return `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-pin"/></svg></span>${esc(v)}</div>
       ${ven?.address ? `<p class="small muted">${esc(ven.address)} · <a href="https://waze.com/ul?q=${encodeURIComponent(ven.address)}&navigate=yes">ניווט</a></p>` : ''}
       <ul class="list">${gs.sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '')).map(g => `<li>
         <div class="row spread"><b style="font-size:1.05rem">${esc(g.name)}</b>${g.startTime ? `<span class="chip">${timeRange(g)}</span>` : ''}</div>
@@ -444,8 +444,8 @@
       : 'טבלאות הליגה יופיעו לאחר ריצת הסקרייפר הראשונה');
     const seg = `<div class="seg">${teams.map((t, i) => `<button data-seg="${esc(t.teamKey)}" class="${i === 0 ? 'active' : ''}">${esc(t.teamKey)}</button>`).join('')}</div>`;
     return seg + teams.map((t, i) => `<div data-pane="${esc(t.teamKey)}" class="${i ? 'hidden' : ''}">
-      <div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-trophy"/></svg></span>${esc(t.league)}</div><p class="muted small">${esc(t.drawName)}</p>
-        <button class="btn btn-secondary" data-remind="team:${esc(t.teamId)}" data-label="כל משחקי ${esc(t.teamKey)} העונה"><svg class="ic" aria-hidden="true"><use href="#ic-bell"/></svg> שלח לי תזכורת לכל משחקי ${esc(t.teamKey)} העונה</button></div>
+      <div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-trophy"/></svg></span>${esc(t.league)}</div><p class="muted small">${esc(t.drawName)}</p>
+        <button class="btn btn-secondary" data-remind="team:${esc(t.teamId)}" data-label="כל משחקי ${esc(t.teamKey)} העונה"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-bell"/></svg> שלח לי תזכורת לכל משחקי ${esc(t.teamKey)} העונה</button></div>
       <div class="card"><div class="card-title">טבלה</div><div class="table-wrap"><table class="tbl"><tr><th class="num">#</th><th>קבוצה</th><th class="num">מש'</th><th class="num">נצ'</th><th class="num">הפ'</th><th class="num">נק'</th></tr>
         ${(t.table || []).map(r => `<tr class="${r.ours ? 'ours' : ''}"><td class="num">${r.position ?? ''}</td><td>${esc(r.name)}</td><td class="num">${r.played ?? ''}</td><td class="num">${r.won ?? ''}</td><td class="num">${r.lost ?? ''}</td><td class="num"><b>${r.points ?? ''}</b></td></tr>`).join('')}</table></div></div>
       ${(t.upcoming || []).length ? `<div class="card"><div class="card-title">משחקים קרובים</div><ul class="list">${t.upcoming.map(m => `<li>${matchCard(m)}</li>`).join('')}</ul></div>` : ''}
@@ -460,7 +460,7 @@
     const upcoming = list.filter(t => !t.date || t.date >= today);
     const past = list.filter(t => t.date && t.date < today).reverse();
     const card = t => `<div class="card">
-      <div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-medal"/></svg></span>${esc(t.name)}</div>
+      <div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-medal"/></svg></span>${esc(t.name)}</div>
       <div class="row" style="margin-bottom:6px">${t.date ? `<span class="chip orange">${fmtDate(t.date, true)}</span>` : ''}${t.registrationUntil ? `<span class="chip">הרשמה עד ${esc(t.registrationUntil)}</span>` : ''}</div>
       ${t.venue ? `<p class="small">📍 ${esc(t.venue)}</p>` : ''}
       ${(t.categories || []).length ? `<div class="row">${t.categories.map(c => `<span class="chip gray">${esc(c)}</span>`).join('')}</div>` : ''}
@@ -486,28 +486,28 @@
   SCREENS.coaches = async () => {
     const coaches = await D.coaches();
     if (!coaches.length) return empty('whistle', 'פרטי המאמנים יוזנו בקרוב');
-    return coaches.map(c => `<div class="card"><div class="person">${c.photoUrl ? `<img src="${esc(c.photoUrl)}" alt="">` : '<div class="avatar">' + '<svg class="ic" aria-hidden="true"><use href="#ic-user"/></svg>' + '</div>'}
+    return coaches.map(c => `<div class="card"><div class="person">${c.photoUrl ? `<img src="${esc(c.photoUrl)}" alt="">` : '<div class="avatar">' + '<svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-user"/></svg>' + '</div>'}
       <div><div class="name">${esc(c.name)}</div><div class="muted small">${esc((c.venues || []).join(' · '))}</div>${(c.groupNames || []).length ? `<div class="muted small">מאמן/ת: ${esc(c.groupNames.join(' · '))}</div>` : ''}${c.bio ? `<div class="small">${esc(c.bio)}</div>` : ''}</div></div>
-      ${c.phone ? `<div class="row" style="margin-top:12px"><a class="btn btn-primary btn-sm" href="${telHref(c.phone)}"><svg class="ic" aria-hidden="true"><use href="#ic-phone"/></svg> ${esc(fmtPhone(normalizePhone(c.phone)))}</a><a class="btn btn-secondary btn-sm" href="${waHref(c.phone)}" target="_blank" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#ic-whatsapp"/></svg> וואטסאפ</a></div>` : ''}</div>`).join('');
+      ${c.phone ? `<div class="row" style="margin-top:12px"><a class="btn btn-primary btn-sm" href="${telHref(c.phone)}"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-phone"/></svg> ${esc(fmtPhone(normalizePhone(c.phone)))}</a><a class="btn btn-secondary btn-sm" href="${waHref(c.phone)}" target="_blank" rel="noopener"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-whatsapp"/></svg> וואטסאפ</a></div>` : ''}</div>`).join('');
   };
 
   SCREENS.contact = async () => {
     const [venues, settings] = await Promise.all([D.venues(), D.settings()]);
     const c = { ...CLUB, ...(settings.contact || {}) };
-    return `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-phone"/></svg></span>טלפונים</div>
-      <div class="row"><a class="btn btn-primary" href="${telHref(c.contactPhone)}"><svg class="ic" aria-hidden="true"><use href="#ic-phone"/></svg> ${esc(c.contactName)} · ${esc(fmtPhone(normalizePhone(c.contactPhone)))}</a></div>
-      <div class="row" style="margin-top:8px"><a class="btn btn-secondary" href="${waHref(c.contactPhone, 'שלום, אני פונה מפורטל המועדון')}" target="_blank" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#ic-whatsapp"/></svg> וואטסאפ</a></div>
+    return `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-phone"/></svg></span>טלפונים</div>
+      <div class="row"><a class="btn btn-primary" href="${telHref(c.contactPhone)}"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-phone"/></svg> ${esc(c.contactName)} · ${esc(fmtPhone(normalizePhone(c.contactPhone)))}</a></div>
+      <div class="row" style="margin-top:8px"><a class="btn btn-secondary" href="${waHref(c.contactPhone, 'שלום, אני פונה מפורטל המועדון')}" target="_blank" rel="noopener"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-whatsapp"/></svg> וואטסאפ</a></div>
       ${c.email ? `<p style="margin-top:10px"><a href="mailto:${esc(c.email)}">${esc(c.email)}</a></p>` : ''}</div>
-      ${venues.length ? `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-pin"/></svg></span>האולמות</div><ul class="list">${venues.map(v => `<li><b>${esc(v.name)}</b><div class="small muted">${esc(v.address || '')}</div>${v.address ? `<div class="row" style="margin-top:6px"><a class="btn btn-secondary btn-sm" href="https://waze.com/ul?q=${encodeURIComponent(v.address)}&navigate=yes"><svg class="ic" aria-hidden="true"><use href="#ic-navigate"/></svg> Waze</a><a class="btn btn-secondary btn-sm" href="https://maps.google.com/?q=${encodeURIComponent(v.address)}"><svg class="ic" aria-hidden="true"><use href="#ic-map"/></svg> מפות</a></div>` : ''}</li>`).join('')}</ul></div>` : ''}`;
+      ${venues.length ? `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-pin"/></svg></span>האולמות</div><ul class="list">${venues.map(v => `<li><b>${esc(v.name)}</b><div class="small muted">${esc(v.address || '')}</div>${v.address ? `<div class="row" style="margin-top:6px"><a class="btn btn-secondary btn-sm" href="https://waze.com/ul?q=${encodeURIComponent(v.address)}&navigate=yes"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-navigate"/></svg> Waze</a><a class="btn btn-secondary btn-sm" href="https://maps.google.com/?q=${encodeURIComponent(v.address)}"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-map"/></svg> מפות</a></div>` : ''}</li>`).join('')}</ul></div>` : ''}`;
   };
 
-  SCREENS.social = async () => `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-share"/></svg></span>עקבו אחרינו</div>
-    <a class="btn btn-primary" style="margin-bottom:10px" href="${esc(CLUB.facebook)}" target="_blank" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#ic-facebook"/></svg> הדף שלנו בפייסבוק</a>
-    <a class="btn btn-orange" href="${esc(CLUB.instagram)}" target="_blank" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#ic-instagram"/></svg> האינסטגרם שלנו</a></div>
+  SCREENS.social = async () => `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-share"/></svg></span>עקבו אחרינו</div>
+    <a class="btn btn-primary" style="margin-bottom:10px" href="${esc(CLUB.facebook)}" target="_blank" rel="noopener"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-facebook"/></svg> הדף שלנו בפייסבוק</a>
+    <a class="btn btn-orange" href="${esc(CLUB.instagram)}" target="_blank" rel="noopener"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-instagram"/></svg> האינסטגרם שלנו</a></div>
     <div class="card"><div class="card-title">הפוסטים האחרונים</div>
     <iframe src="https://www.facebook.com/plugins/page.php?href=${encodeURIComponent(CLUB.facebook)}&tabs=timeline&width=340&height=600&small_header=true&adapt_container_width=true&hide_cover=false&show_facepile=false" width="100%" height="600" style="border:none;overflow:hidden;border-radius:12px" scrolling="no" frameborder="0" allow="encrypted-media" title="פייסבוק"></iframe></div>`;
 
-  SCREENS.partners = async () => `<div class="card center"><div class="card-title" style="justify-content:center"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-handshake"/></svg></span>השותפים שלנו</div>
+  SCREENS.partners = async () => `<div class="card center"><div class="card-title" style="justify-content:center"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-handshake"/></svg></span>השותפים שלנו</div>
     <p>המועדון פועל בשיתוף:</p>
     <img src="assets/logo-matnas.png" alt="מתנ״ס אזורי מבואות החרמון" style="max-width:70%;max-height:150px;margin:12px auto;display:block" onerror="this.style.display='none'"><p><b>מתנ״ס אזורי מבואות החרמון</b></p>
     <img src="assets/logo-moatza.png" alt="מועצה אזורית מבואות החרמון" style="max-width:70%;max-height:150px;margin:12px auto;display:block" onerror="this.style.display='none'"><p><b>מועצה אזורית מבואות החרמון</b></p>
@@ -516,15 +516,15 @@
   SCREENS.more = async () => `<div class="card" style="padding:6px">
     ${[['tournaments', 'medal', 'תחרויות'], ['news', 'megaphone', 'הודעות ואירועים'], ['coaches', 'whistle', 'המאמנים שלנו'], ['contact', 'phone', 'צור קשר'], ['social', 'share', 'עקבו אחרינו'], ['partners', 'handshake', 'שותפים'],
       ...(canPublish() ? [['publish', 'edit', 'הודעה חדשה']] : []), ...(isAdmin() ? [['admin', 'settings', 'ניהול'], ['dashboard', 'chart', 'דשבורד']] : [])]
-      .map(([k, i, t]) => `<button class="btn" style="justify-content:flex-start;font-size:1.1rem;border-bottom:1px solid var(--line);border-radius:0" data-go="${k}"><svg class="ic" aria-hidden="true"><use href="#ic-${i}"/></svg>${t}</button>`).join('')}
-    <button class="btn" style="justify-content:flex-start;font-size:1.05rem;color:var(--red)" id="btn-logout-2"><svg class="ic" aria-hidden="true"><use href="#ic-logout"/></svg>יציאה</button></div>
+      .map(([k, i, t]) => `<button class="btn" style="justify-content:flex-start;font-size:1.1rem;border-bottom:1px solid var(--line);border-radius:0" data-go="${k}"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-${i}"/></svg>${t}</button>`).join('')}
+    <button class="btn" style="justify-content:flex-start;font-size:1.05rem;color:var(--red)" id="btn-logout-2"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-logout"/></svg>יציאה</button></div>
     <p class="center small muted">מחובר: ${esc(S.claims.name || '')} · ${roleLabel(S.claims.role)} · ${esc(fmtPhone(S.user.uid))}</p>`;
   document.addEventListener('click', e => { if (e.target.id === 'btn-logout-2' || e.target.id === 'btn-logout-3') $('#btn-logout').click(); });
 
   // ---------------------------------------------------------------- reminders
   async function openReminder(target, label) {
     const [scope, id] = target.split(':');
-    const html = `<div class="modal" id="modal"><div class="modal-panel"><h2><svg class="ic" aria-hidden="true"><use href="#ic-bell"/></svg> הזכר לי</h2><p class="muted">${esc(label)}</p>
+    const html = `<div class="modal" id="modal"><div class="modal-panel"><h2><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-bell"/></svg> הזכר לי</h2><p class="muted">${esc(label)}</p>
       <form data-form="reminder"><label for="rem-email">כתובת המייל שלך</label><input id="rem-email" name="email" type="email" inputmode="email" autocomplete="email" required placeholder="name@example.com" value="${esc(localStorage.getItem('remEmail') || '')}">
       <label>מתי להזכיר?</label>
       <label class="check"><input type="checkbox" name="week" checked> שבוע לפני המשחק</label>
@@ -557,7 +557,7 @@
   function pushSupported() { return 'Notification' in window && 'serviceWorker' in navigator && firebase.messaging?.isSupported?.() && CFG.vapidKey && !CFG.vapidKey.startsWith('PASTE'); }
   function pushCard() {
     if (!pushSupported() || Notification.permission === 'granted' || localStorage.getItem('pushDismissed')) return '';
-    return `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-bell"/></svg></span>התראות על הודעות דחופות</div><p class="small muted">כדי לקבל הודעה לטלפון כשאימון מתבטל — גם כשהפורטל סגור.</p>
+    return `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-bell"/></svg></span>התראות על הודעות דחופות</div><p class="small muted">כדי לקבל הודעה לטלפון כשאימון מתבטל — גם כשהפורטל סגור.</p>
       <div class="row"><button class="btn btn-primary" data-action="enablePush">הפעל התראות</button><button class="btn btn-secondary btn-sm" data-action="dismissPush">לא עכשיו</button></div></div>`;
   }
   ACTIONS.dismissPush = () => { localStorage.setItem('pushDismissed', '1'); route(); };
@@ -641,7 +641,7 @@
     const pname = id => players.find(p => p.id === id)?.name || id;
     const playerOpts = sel => `<option value="">— חבר מועדון (ללא שחקן) —</option>` + players.sort((a, b) => a.name.localeCompare(b.name, 'he')).map(p => `<option value="${p.id}" ${sel === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
     const panes = {
-      access: `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-edit"/></svg></span>הוספת מספר</div><form data-form="addUser" class="form-grid">
+      access: `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-edit"/></svg></span>הוספת מספר</div><form data-form="addUser" class="form-grid">
           <label>מספר טלפון</label><input name="phone" type="tel" inputmode="tel" required placeholder="050-1234567" style="direction:ltr">
           <label>שם</label><input name="name" required placeholder="שם מלא">
           <label>קישור לשחקן</label><select name="playerId">${playerOpts()}</select>
@@ -650,18 +650,18 @@
           <details style="margin-top:14px"><summary style="font-weight:700;cursor:pointer">📥 ייבוא רשימה (הדבקה)</summary>
           <p class="small muted">שורה לכל אדם: <code>טלפון, שם, מזהה-שחקן-או-ריק, סוג</code>. לדוגמה:<br><code>0501234567, רונית כהן, ${players[0]?.id || 'abc123'}, parent</code></p>
           <form data-form="importUsers"><textarea name="csv" placeholder="0501234567, שם, מזהה שחקן, parent"></textarea><button class="btn btn-secondary" type="submit">ייבא</button></form></details></div>
-        <div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-users"/></svg></span>מורשי כניסה (${users.length})</div><input type="search" placeholder="חיפוש לפי שם או טלפון" data-filter="#users-list" style="margin-bottom:10px">
+        <div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-users"/></svg></span>מורשי כניסה (${users.length})</div><input type="search" placeholder="חיפוש לפי שם או טלפון" data-filter="#users-list" style="margin-bottom:10px">
           <ul class="list" id="users-list">${users.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he')).map(u => `<li class="user-row" data-search="${esc((u.name || '') + ' ' + u.id)}"><div class="info"><div class="n">${esc(u.name || '—')} <span class="chip ${u.role === 'admin' ? 'orange' : u.role === 'coach' ? 'green' : ''}">${roleLabel(u.role)}</span>${u.canPublish ? '<span class="chip green">מפרסם</span>' : ''}</div>
             <div class="p">${esc(fmtPhone(u.id))}</div><div class="small muted">${(u.playerIds || []).map(pname).map(esc).join(', ')}${u.lastLogin ? ' · כניסה אחרונה ' + fmtDate(u.lastLogin.slice(0, 10), false) : ' · <b>לא נכנס מעולם</b>'}</div></div>
             ${u.role === 'coach' ? `<button class="btn btn-sm ${u.canPublish ? 'btn-secondary' : 'btn-primary'}" data-action="togglePublish" data-id="${u.id}" data-val="${u.canPublish ? '0' : '1'}" title="רשאי לפרסם הודעות">${u.canPublish ? '🔕' : '✍️'}</button>` : ''}
             ${u.id !== S.user.uid ? `<button class="btn btn-danger btn-sm" data-action="removeUser" data-id="${u.id}">הסר</button>` : ''}</li>`).join('')}</ul></div>`,
-      players: `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-ball"/></svg></span>שחקנים (${players.length})</div><p class="small muted">השחקנים מגיעים אוטומטית מאפליקציית הנוכחות (סנכרון יומי). כאן מקשרים מספר TTTM ומוסיפים טלפונים.</p>
+      players: `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-ball"/></svg></span>שחקנים (${players.length})</div><p class="small muted">השחקנים מגיעים אוטומטית מאפליקציית הנוכחות (סנכרון יומי). כאן מקשרים מספר TTTM ומוסיפים טלפונים.</p>
         <form data-form="addPlayer" class="row" style="margin-bottom:10px"><input name="name" placeholder="שם שחקן חדש" required><button class="btn btn-secondary btn-sm" type="submit">הוסף</button></form>
         <ul class="list">${players.map(p => `<li><div class="row spread"><div><b>${esc(p.name)}</b> <span class="chip gray">${esc(groups.find(g => g.id === p.groupId)?.name || 'ללא קבוצה')}</span>${p.tttmId ? `<span class="chip">TTTM ${esc(p.tttmId)}</span>` : ''}${(p.leagueTeams || []).map(k => `<span class="chip orange">${esc(k)}</span>`).join('')}</div>
           <button class="btn btn-secondary btn-sm" data-action="editPlayer" data-id="${p.id}">עריכה</button></div>
           <div class="small muted">${(p.phones || []).map(fmtPhone).map(esc).join(' · ') || 'אין מספרים מקושרים'}</div>
           <div class="row" style="margin-top:6px"><form data-form="addPhoneToPlayer" class="row" style="flex:1"><input type="hidden" name="playerId" value="${p.id}"><input name="phone" type="tel" placeholder="הוסף מספר של הורה" style="direction:ltr;min-height:48px"><input name="name" placeholder="שם ההורה" style="min-height:48px"><button class="btn btn-primary btn-sm" type="submit">+</button></form></div></li>`).join('')}</ul></div>`,
-      groups: `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-calendar"/></svg></span>קבוצות ולוח אימונים</div><p class="small muted">הקבוצות מסונכרנות מאפליקציית הנוכחות. אפשר לערוך כאן מקום ומאמנים.</p>
+      groups: `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-calendar"/></svg></span>קבוצות ולוח אימונים</div><p class="small muted">הקבוצות מסונכרנות מאפליקציית הנוכחות. אפשר לערוך כאן מקום ומאמנים.</p>
         ${groups.map(g => `<form data-form="saveGroup" class="form-grid" style="border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:12px"><input type="hidden" name="id" value="${g.id}">
           <div class="row"><input name="name" value="${esc(g.name || '')}" placeholder="שם הקבוצה" required><select name="venue">${['', ...venues.map(v => v.name)].map(v => `<option ${g.venue === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></div>
           <div class="row">${HEB_DAYS.map((d, i) => `<label class="check" style="margin:4px 0"><input type="checkbox" name="day${i}" ${(g.days || []).some(x => x === i || x === d) ? 'checked' : ''}>${d.slice(0, 1)}׳</label>`).join('')}</div>
@@ -669,14 +669,14 @@
           <label>מאמנים</label><div class="row">${coaches.map(c => `<label class="check" style="margin:4px 0"><input type="checkbox" name="coach_${c.id}" ${(g.coachIds || []).includes(c.id) ? 'checked' : ''}>${esc(c.name)}</label>`).join('') || '<span class="muted small">הוסף מאמנים בלשונית מאמנים</span>'}</div>
           <button class="btn btn-secondary btn-sm" type="submit">שמור</button></form>`).join('')}
         <form data-form="saveGroup" class="row"><input type="hidden" name="id" value=""><input name="name" placeholder="קבוצה חדשה" required><button class="btn btn-primary btn-sm" type="submit">הוסף</button></form></div>`,
-      coaches: `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-whistle"/></svg></span>מאמנים</div>
+      coaches: `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-whistle"/></svg></span>מאמנים</div>
         ${coaches.map(c => `<form data-form="saveCoach" class="form-grid" style="border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:12px"><input type="hidden" name="id" value="${c.id}">
           <div class="row"><input name="name" value="${esc(c.name || '')}" placeholder="שם" required><input name="phone" value="${esc(c.phone || '')}" placeholder="טלפון" style="direction:ltr"></div>
           <input name="photoUrl" value="${esc(c.photoUrl || '')}" placeholder="קישור לתמונה (assets/coach-x.jpg)">
           <input name="venues" value="${esc((c.venues || []).join(', '))}" placeholder="איפה מאמן (מופרד בפסיק)"><input name="bio" value="${esc(c.bio || '')}" placeholder="משפט עליו (אופציונלי)">
           <div class="row"><button class="btn btn-secondary btn-sm" type="submit">שמור</button><button class="btn btn-danger btn-sm" type="button" data-action="delCoach" data-id="${c.id}">מחק</button></div></form>`).join('')}
         <form data-form="saveCoach" class="row"><input type="hidden" name="id" value=""><input name="name" placeholder="מאמן חדש" required><button class="btn btn-primary btn-sm" type="submit">הוסף</button></form></div>`,
-      venues: `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-pin"/></svg></span>אולמות</div>
+      venues: `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-pin"/></svg></span>אולמות</div>
         ${venues.map(v => `<form data-form="saveVenue" class="row" style="margin-bottom:10px"><input type="hidden" name="id" value="${v.id}"><input name="name" value="${esc(v.name)}" required><input name="address" value="${esc(v.address || '')}" placeholder="כתובת לניווט"><button class="btn btn-secondary btn-sm" type="submit">שמור</button><button class="btn btn-danger btn-sm" type="button" data-action="delVenue" data-id="${v.id}">מחק</button></form>`).join('')}
         <form data-form="saveVenue" class="row"><input type="hidden" name="id" value=""><input name="name" placeholder="שם האולם" required><input name="address" placeholder="כתובת"><button class="btn btn-primary btn-sm" type="submit">הוסף</button></form>
         <p class="small muted" style="margin-top:10px">שינוי הרשאות (מאמן→מפרסם, הוספת מנהל) נכנס לתוקף בכניסה הבאה של אותו משתמש.</p></div>`,
@@ -769,14 +769,14 @@
     const t = todayISO(), monthAgo = localISO(new Date(Date.now() - 30 * 864e5));
     const never = users.filter(u => !u.lastLogin), stale = users.filter(u => u.lastLogin && u.lastLogin.slice(0, 10) < monthAgo), recent = users.filter(u => u.lastLogin).sort((a, b) => b.lastLogin.localeCompare(a.lastLogin)).slice(0, 15);
     const byRole = {}; users.forEach(u => byRole[u.role] = (byRole[u.role] || 0) + 1);
-    const userLi = (u, extra = '') => `<li class="user-row"><div class="info"><div class="n">${esc(u.name || '—')} <span class="chip gray">${roleLabel(u.role)}</span></div><div class="p">${esc(fmtPhone(u.id))}${extra}</div></div><a class="btn btn-secondary btn-sm" href="${waHref(u.id, `היי ${esc(firstName(u.name))}, הצטרפ/י לפורטל המועדון: ${location.origin + location.pathname}`)}" target="_blank" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#ic-whatsapp"/></svg></a></li>`;
-    return `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-chart"/></svg></span>כניסות לפורטל</div>
+    const userLi = (u, extra = '') => `<li class="user-row"><div class="info"><div class="n">${esc(u.name || '—')} <span class="chip gray">${roleLabel(u.role)}</span></div><div class="p">${esc(fmtPhone(u.id))}${extra}</div></div><a class="btn btn-secondary btn-sm" href="${waHref(u.id, `היי ${esc(firstName(u.name))}, הצטרפ/י לפורטל המועדון: ${location.origin + location.pathname}`)}" target="_blank" rel="noopener"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-whatsapp"/></svg></a></li>`;
+    return `<div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-chart"/></svg></span>כניסות לפורטל</div>
       <div class="stat-grid"><div><div class="big-number">${byDay[t] || 0}</div><div class="lbl">היום</div></div><div><div class="big-number">${sum(days.slice(-7))}</div><div class="lbl">השבוע</div></div><div><div class="big-number">${sum(days)}</div><div class="lbl">30 יום</div></div></div>
       <div class="bar-chart" style="margin-top:14px">${days.map(d => `<div class="bar" style="height:${Math.round(100 * (byDay[d] || 0) / max)}%" title="${d}: ${byDay[d] || 0}"></div>`).join('')}</div><div class="small muted center">30 הימים האחרונים</div>
       <div class="row" style="margin-top:10px">${Object.entries(byRole).map(([r, n]) => `<span class="chip">${roleLabel(r)}: ${n}</span>`).join('')}<span class="chip gray">סה"כ ${users.length}</span></div></div>
-      <div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-megaphone"/></svg></span>לא נכנסו מעולם (${never.length})</div><p class="small muted">אלה שהוספת ועדיין לא הגיעו — שלח להם תזכורת בוואטסאפ.</p><ul class="list">${never.map(u => userLi(u)).join('') || '<li class="muted">כולם נכנסו 🎉</li>'}</ul></div>
-      <div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-calendar"/></svg></span>לא נכנסו מעל חודש (${stale.length})</div><ul class="list">${stale.map(u => userLi(u, ' · ' + fmtDate(u.lastLogin.slice(0, 10), false))).join('') || '<li class="muted">אין</li>'}</ul></div>
-      <div class="card"><div class="card-title"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#ic-calendar"/></svg></span>נכנסו לאחרונה</div><ul class="list">${recent.map(u => `<li><b>${esc(u.name || '')}</b> <span class="small muted">${fmtDate(u.lastLogin.slice(0, 10), false)} · ${u.loginCount || 0} כניסות</span></li>`).join('') || '<li class="muted">אין עדיין</li>'}</ul></div>`;
+      <div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-megaphone"/></svg></span>לא נכנסו מעולם (${never.length})</div><p class="small muted">אלה שהוספת ועדיין לא הגיעו — שלח להם תזכורת בוואטסאפ.</p><ul class="list">${never.map(u => userLi(u)).join('') || '<li class="muted">כולם נכנסו 🎉</li>'}</ul></div>
+      <div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-calendar"/></svg></span>לא נכנסו מעל חודש (${stale.length})</div><ul class="list">${stale.map(u => userLi(u, ' · ' + fmtDate(u.lastLogin.slice(0, 10), false))).join('') || '<li class="muted">אין</li>'}</ul></div>
+      <div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-calendar"/></svg></span>נכנסו לאחרונה</div><ul class="list">${recent.map(u => `<li><b>${esc(u.name || '')}</b> <span class="small muted">${fmtDate(u.lastLogin.slice(0, 10), false)} · ${u.loginCount || 0} כניסות</span></li>`).join('') || '<li class="muted">אין עדיין</li>'}</ul></div>`;
   };
 
   // ---------------------------------------------------------------- boot
