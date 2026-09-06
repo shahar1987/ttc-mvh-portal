@@ -4,22 +4,33 @@ service cloud.firestore {
 
     // ---------- helpers ----------
     function signedIn() { return request.auth != null; }
-    function role() { return signedIn() ? request.auth.token.role : null; }
-    function isAdmin() { return role() == 'admin'; }
-    function isCoach() { return role() == 'coach' || isAdmin(); }
-    function canPublish() { return isAdmin() || (signedIn() && request.auth.token.canPublish == true); }
     // uid == normalized phone (972501234567) — minted by the login Worker
     function myPhone() { return request.auth.uid; }
+    // "פעיל" = מחובר וגם עדיין רשום ולא מושעה. כך ביטול גישה (מחיקה/השעיה בניהול) תופס מיד,
+    // גם אם למכשיר יש עדיין session פתוח.
+    function me() { return get(/databases/$(database)/documents/users/$(myPhone())).data; }
+    function active() { return signedIn() && me().disabled != true; }
+    function role() { return active() ? request.auth.token.role : null; }
+    function isAdmin() { return role() == 'admin'; }
+    function isCoach() { return role() == 'coach' || isAdmin(); }
+    function canPublish() { return isAdmin() || (active() && request.auth.token.canPublish == true); }
+    function myPlayerIds() { return ('playerIds' in request.auth.token) ? request.auth.token.playerIds : []; }
+    function myGroupIds() { return ('groupIds' in request.auth.token) ? request.auth.token.groupIds : []; }
 
     // ---------- users (access list) ----------
     match /users/{phone} {
       allow read: if signedIn() && (phone == myPhone() || isAdmin());
       allow write: if isAdmin();   // lastLogin/loginCount are written by the Worker (service account)
+      // סודות כניסה (hash של קוד ה-PIN): אף לקוח לא קורא; המנהל רק קובע קוד ראשוני. ה-Worker קורא עם service account.
+      match /private/{doc} {
+        allow read: if false;
+        allow write: if isAdmin();
+      }
     }
 
     // ---------- players ----------
     match /players/{playerId} {
-      allow read: if signedIn() && (
+      allow read: if active() && (
         isCoach() ||
         (resource.data.phones != null && myPhone() in resource.data.phones)
       );
@@ -28,13 +39,13 @@ service cloud.firestore {
 
     // ---------- attendance (mirrored from the attendance app) ----------
     match /attendance/{playerId} {
-      allow read: if signedIn() && (
+      allow read: if active() && (
         isCoach() ||
         (myPhone() in get(/databases/$(database)/documents/players/$(playerId)).data.phones)
       );
       allow write: if false;      // written only by the sync job (service account)
       match /sessions/{date} {
-        allow read: if signedIn() && (
+        allow read: if active() && (
           isCoach() ||
           (myPhone() in get(/databases/$(database)/documents/players/$(playerId)).data.phones)
         );
@@ -44,23 +55,30 @@ service cloud.firestore {
 
     // ---------- TTTM (scraper output) ----------
     match /tttm/{doc} {
-      allow read: if signedIn();
+      allow read: if active();
       allow write: if false;      // scraper only
-      match /{sub=**} { allow read: if signedIn(); allow write: if false; }
+      match /{sub=**} { allow read: if active(); allow write: if false; }
     }
 
     // ---------- club content ----------
+    // קהל היעד של הודעה נאכף כאן (ולא רק במסך): "מאמנים בלבד" לא נקרא ע"י הורים,
+    // "הודעה לקבוצה" נקראת רק ע"י מי שיש לו שחקן באותה קבוצה. האפליקציה שואלת לפי audience/groupId.
     match /announcements/{id} {
-      allow read: if signedIn();
+      allow read: if isCoach() || (active() && (
+        resource.data.audience == 'all' ||
+        (resource.data.audience == 'players' && myPlayerIds().size() > 0) ||
+        (resource.data.audience == 'group' && resource.data.groupId in myGroupIds())
+      ));
       allow create: if canPublish()
         && request.resource.data.authorId == myPhone()
+        && request.resource.data.audience in ['all', 'players', 'coaches', 'group']
         && (isAdmin() || request.resource.data.audience == 'group');
       allow update, delete: if isAdmin() || (canPublish() && resource.data.authorId == myPhone());
     }
-    match /groups/{id}   { allow read: if signedIn(); allow write: if isAdmin(); }
-    match /coaches/{id}  { allow read: if signedIn(); allow write: if isAdmin(); }
-    match /venues/{id}   { allow read: if signedIn(); allow write: if isAdmin(); }
-    match /settings/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /groups/{id}   { allow read: if active(); allow write: if isAdmin(); }
+    match /coaches/{id}  { allow read: if active(); allow write: if isAdmin(); }
+    match /venues/{id}   { allow read: if active(); allow write: if isAdmin(); }
+    match /settings/{id} { allow read: if active(); allow write: if isAdmin(); }
 
     // ---------- דוח מצב הסנכרון (נכתב ע"י job הסנכרון בלבד) ----------
     match /meta/{id} { allow read: if isCoach(); allow write: if false; }
@@ -71,8 +89,9 @@ service cloud.firestore {
     // ---------- email reminders ----------
     match /reminders/{id} {
       allow read: if isAdmin();
-      allow create: if signedIn()
+      allow create: if active()
         && request.resource.data.email is string
+        && request.resource.data.email.size() <= 120
         && request.resource.data.email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
         && request.resource.data.ownerUid == myPhone();
       allow delete: if isAdmin() || (signedIn() && resource.data.ownerUid == myPhone());
@@ -85,8 +104,11 @@ service cloud.firestore {
     // ---------- push tokens ----------
     match /pushTokens/{token} {
       allow read: if isAdmin();
-      allow write: if signedIn() && request.resource.data.uid == myPhone();
+      allow write: if active() && request.resource.data.uid == myPhone();
     }
+
+    // ---------- הגבלת ניסיונות (Worker בלבד) ----------
+    match /ratelimit/{id} { allow read, write: if false; }
 
     match /{document=**} { allow read, write: if false; }
   }
