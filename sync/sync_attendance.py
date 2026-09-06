@@ -135,8 +135,17 @@ def main():
             continue
         ref = dst.collection("coaches").document(cid)
         prev = ref.get().to_dict() or {}
+        # באפליקציית הנוכחות יש חשבונות ששמם הוא כתובת מייל — לא שם תצוגה.
+        # במקרה כזה משאירים את השם שהוזן ידנית בפורטל, וכך העריכה הידנית לא נדרסת.
+        src_name = (u.get("name") or "").strip()
+        if "@" in src_name:
+            src_name = ""
+        prev_name = (prev.get("name") or "").strip()
+        if "@" in prev_name:
+            prev_name = ""
+        display_name = src_name or prev_name or (u.get("email") or "").split("@")[0]
         ref.set({
-            "name": u.get("name") or "",
+            "name": display_name,
             "phone": u.get("phone") or prev.get("phone", ""),
             "venues": sorted(venues_of),
             # תמונה ותיאור נשמרים — הם מוזנים ידנית בפורטל
