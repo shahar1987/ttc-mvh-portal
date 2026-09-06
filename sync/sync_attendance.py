@@ -83,6 +83,26 @@ def _norm_name(n):
     return re.sub(r"[\s'\u05f3\u2019\-]+", "", (n or "")).strip()
 
 
+def _tokens(n):
+    return {t for t in re.split(r"[\s\-]+", re.sub(r"['\u05f3\u2019\u05f4\"]", "", n or "")) if t}
+
+
+def match_tttm(name, tttm_names):
+    """מחזיר tttmId יחיד אם השם זהה, או אם כל מילות השם הקצר מוכלות בשם הארוך (למשל 'איתמר לב' -> 'איתמר יוסף לב').
+    tttm_names: dict tttmId -> name. אם יש יותר ממועמד אחד — לא מנחשים."""
+    if not name:
+        return None
+    nn = _norm_name(name)
+    exact = [tid for tid, tn in tttm_names.items() if _norm_name(tn) == nn]
+    if len(exact) == 1:
+        return exact[0]
+    toks = _tokens(name)
+    if len(toks) < 2:
+        return None
+    cands = [tid for tid, tn in tttm_names.items() if toks <= _tokens(tn) or _tokens(tn) <= toks]
+    return cands[0] if len(cands) == 1 else None
+
+
 def season_start():
     env = os.environ.get("SEASON_START")
     if env:
@@ -257,12 +277,13 @@ def main():
     existing = {d.id: d.to_dict() for d in dst.collection("players").stream()}
     created, linked = [], []
     # מיפוי שם -> מספר TTTM (seed/tttm_players.json); שחקן שהשם שלו תואם מקבל tttmId אוטומטית
-    tttm_map = {}
+    tttm_map, tttm_names = {}, {}
     try:  # קודם כל מהנתונים החיים של TTTM בפורטל (מתעדכן בכל ריצת סקרייפר)
         for d in dst.collection("tttm/players/items").stream():
             data = d.to_dict() or {}
             if data.get("name"):
                 tttm_map[_norm_name(data["name"])] = d.id
+                tttm_names[d.id] = data["name"]
     except Exception as e:  # pragma: no cover
         print(f"(live tttm players not read: {e})", file=sys.stderr)
     try:  # גיבוי: קובץ הסנאפשוט שנשמר בריפו
@@ -283,8 +304,10 @@ def main():
             "source": "attendance-app",
             "updatedAt": now,
         }
-        if not (existing.get(pid) or {}).get("tttmId") and _norm_name(name) in tttm_map:
-            doc["tttmId"] = tttm_map[_norm_name(name)]
+        if not (existing.get(pid) or {}).get("tttmId"):
+            tid = tttm_map.get(_norm_name(name)) or match_tttm(name, tttm_names)
+            if tid:
+                doc["tttmId"] = tid
         adult = is_adult_group(groups.get(p.get("groupId", "")))
         doc["isAdult"] = adult
         phones = set((existing.get(pid) or {}).get("phones") or [])
@@ -369,6 +392,34 @@ def main():
             batch = dst.batch()
     batch.commit()
     print(f"attendance summaries written: {count}", file=sys.stderr)
+
+    # ---- אנשי צוות שהם גם שחקנים: מקשרים למשתמש שלהם את כרטיס השחקן ו/או את מספר ה-TTTM לפי השם
+    portal_users = {d.id: (d.to_dict() or {}) for d in dst.collection("users").stream()}
+    player_by_norm = {}
+    for pid, p in players.items():
+        nmp = p.get("name") or f"{p.get('firstName', '')} {p.get('lastName', '')}".strip()
+        if nmp:
+            player_by_norm.setdefault(_norm_name(nmp), []).append(pid)
+    linked_staff = 0
+    for u in src_users.values():
+        ph = normalize_phone(u.get("phone"))
+        nm = display_name(u)
+        if not ph or not nm or ph not in portal_users:
+            continue
+        cur = portal_users[ph]
+        upd = {}
+        if not cur.get("playerIds"):
+            cands = player_by_norm.get(_norm_name(nm)) or []
+            if len(cands) == 1:
+                upd["playerIds"] = firestore.ArrayUnion(cands)
+        if not cur.get("tttmId"):
+            tid = tttm_map.get(_norm_name(nm)) or match_tttm(nm, tttm_names)
+            if tid:
+                upd["tttmId"] = tid
+        if upd:
+            dst.collection("users").document(ph).update(upd)
+            linked_staff += 1
+    print(f"staff linked to player card / TTTM: {linked_staff}", file=sys.stderr)
 
     # ---- דוח מצב סנכרון: מוצג במסך הניהול כדי שרואים שהמערכות מיושרות
     portal_users = {d.id: (d.to_dict() or {}) for d in dst.collection("users").stream()}
