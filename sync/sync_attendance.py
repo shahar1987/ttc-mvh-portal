@@ -177,7 +177,7 @@ def main():
                     prev[f] = old[f]
         dst.collection("coaches").document(doc_id).set({
             "name": e["name"],
-            "phone": e["phone"] or prev.get("phone", ""),
+            "phone": e["phone"] or normalize_phone(prev.get("phone")) or "",   # תמיד בפורמט אחיד 972…
             "venues": sorted(e["venues"]),
             "groupNames": sorted(e["groups"]),
             "photoUrl": prev.get("photoUrl", ""),
