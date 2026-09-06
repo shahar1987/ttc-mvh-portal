@@ -62,7 +62,16 @@ BROWSER_HEADERS = {
     "Upgrade-Insecure-Requests": "1",
     "Connection": "keep-alive",
 }
-SESSION = requests.Session()
+# Cloudflare חוסם גם לפי טביעת האצבע של ה-TLS (JA3), לא רק לפי הכותרות.
+# curl_cffi מחקה את ה-TLS של Chrome אמיתי ולכן עובר. אם הוא לא מותקן —
+# נופלים חזרה ל-requests רגיל (יעבוד מרשת ביתית, לא משרתי GitHub).
+try:
+    from curl_cffi import requests as _curl
+    SESSION = _curl.Session(impersonate="chrome")
+    USING_CURL_CFFI = True
+except Exception:  # pragma: no cover
+    SESSION = requests.Session()
+    USING_CURL_CFFI = False
 SESSION.headers.update(BROWSER_HEADERS)
 
 # אופציונלי: אם TTTM חוסם את שרתי GitHub, אפשר להעביר את הבקשות דרך ה-Worker
@@ -94,10 +103,10 @@ def get(path, retries=4, sleep=2.0):
             last = f"HTTP {r.status_code}"
             if r.status_code in (401, 403, 429, 503):
                 time.sleep(sleep * (i + 2))
-        except requests.RequestException as e:  # pragma: no cover
-            last = str(e)
+        except Exception as e:  # pragma: no cover  (curl_cffi has its own exception types)
+            last = f"{type(e).__name__}: {e}"
         time.sleep(sleep * (i + 1))
-    raise RuntimeError(f"GET {url} failed: {last}")
+    raise RuntimeError(f"GET {url} failed: {last} (curl_cffi={USING_CURL_CFFI}, proxy={bool(PROXY_PREFIX)})")
 
 
 def soup(path):
@@ -481,6 +490,8 @@ def main():
     ap.add_argument("--out", help="שמירת snapshot JSON לקובץ")
     args = ap.parse_args()
 
+    print(f"http engine: {'curl_cffi (chrome impersonation)' if USING_CURL_CFFI else 'requests'}"
+          f"{' via proxy' if PROXY_PREFIX else ''}", file=sys.stderr)
     existing = {} if args.dry_run else load_existing_matches()
     snap = build_snapshot(existing)
 
