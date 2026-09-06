@@ -99,6 +99,7 @@ label, .big-label { display: block; font-weight: 700; margin: 12px 0 6px; }
   flex: 1; border: 0; background: transparent; display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: 2px; font-size: .8rem; font-weight: 700; color: var(--muted); cursor: pointer;
 }
+.bottomnav button span:last-child { white-space: nowrap; }
 .bottomnav button .ico { font-size: 1.5rem; }
 .bottomnav button.active { color: var(--blue); }
 .bottomnav button.active .ico { transform: scale(1.12); }
@@ -236,3 +237,114 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .95rem; }
 
 @media (min-width: 600px) { :root { --fs: 20px; } .shortcuts { grid-template-columns: repeat(3, 1fr); } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ============================================================
+   פריסה רספונסיבית — מובייל / טאבלט / מחשב
+   ============================================================ */
+
+/* הסיידבר מוסתר כברירת מחדל (מובייל וטאבלט) */
+.sidebar { display: none; }
+
+/* ---------- טאבלט (600px ומעלה) ---------- */
+@media (min-width: 600px) {
+  .main { max-width: 760px; padding: 20px 20px calc(var(--nav-h) + 28px); }
+  .login-card { max-width: 480px; padding: 34px 30px; }
+  .bottomnav button { font-size: .85rem; }
+  .shortcuts { grid-template-columns: repeat(4, 1fr); }
+  .stat-grid .big-number { font-size: 2.5rem; }
+  .modal { align-items: center; }
+  .modal-panel { border-radius: 22px; max-height: 88dvh; }
+}
+
+/* ---------- מחשב (1000px ומעלה): סיידבר קבוע מימין ---------- */
+@media (min-width: 1000px) {
+  :root { --sidebar-w: 272px; }
+
+  #app {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "sidebar topbar" "sidebar main";
+    min-height: 100dvh;
+  }
+
+  .bottomnav { display: none; }
+  #btn-menu { display: none; }
+  #drawer { display: none !important; }
+
+  .topbar { grid-area: topbar; }
+  .topbar-title { text-align: right; padding-inline-start: 10px; font-size: 1.3rem; }
+
+  .main {
+    grid-area: main;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 26px 28px 60px;
+    width: 100%;
+  }
+
+  /* --- הסיידבר --- */
+  .sidebar {
+    grid-area: sidebar;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border-inline-start: 2px solid var(--line);
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    overflow-y: auto;
+  }
+  .sidebar-brand {
+    display: flex; align-items: center; gap: 12px;
+    padding: 18px 16px; border-bottom: 2px solid var(--line);
+  }
+  .sidebar-brand img { width: 60px; height: auto; flex-shrink: 0; }
+  .sb-titles { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+  .sb-titles strong { color: var(--blue); font-size: 1rem; }
+  .sb-titles span { color: var(--muted); font-size: .85rem; }
+
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; flex: 1; }
+  .sidebar-nav button {
+    display: flex; align-items: center; gap: 12px;
+    text-align: right; border: 0; background: transparent; cursor: pointer;
+    padding: 12px 14px; border-radius: 12px; font-weight: 700; font-size: 1rem;
+    color: var(--text); min-height: 50px; width: 100%;
+  }
+  .sidebar-nav button .ico { font-size: 1.25rem; width: 1.6em; text-align: center; flex-shrink: 0; }
+  .sidebar-nav button:hover { background: #eef2fa; }
+  .sidebar-nav button.active { background: var(--blue); color: #fff; }
+  .sidebar-nav hr { border: 0; border-top: 1px solid var(--line); margin: 8px 6px; width: calc(100% - 12px); }
+
+  .sidebar-foot { padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); border-top: 2px solid var(--line); }
+  .sb-user { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+  .sb-user strong { font-size: .95rem; }
+  .sb-user .chip { align-self: flex-start; }
+  .sidebar-foot button {
+    width: 100%; border: 2px solid var(--line); background: #fff; border-radius: 12px;
+    padding: 10px; font-weight: 700; color: var(--red); cursor: pointer; min-height: 46px;
+  }
+  .sidebar-foot button:hover { background: #fde7e7; }
+
+  .toast { bottom: 28px; right: calc(50% + var(--sidebar-w) / 2); }
+  .shortcuts { grid-template-columns: repeat(6, 1fr); }
+  .person img, .person .avatar { width: 88px; height: 88px; }
+}
+
+/* ---------- מסך רחב מאוד ---------- */
+@media (min-width: 1500px) {
+  .main { max-width: 1040px; }
+}
+
+/* ---------- RTL: כיווניות מספרים, שעות וכתובות ---------- */
+[dir="rtl"] .p, [dir="rtl"] .user-row .info .p { direction: ltr; text-align: right; unicode-bidi: plaintext; }
+.match .score, .big-number, .tbl td.num, .tbl th.num { unicode-bidi: plaintext; }
+input[type="tel"], input[type="email"], input[type="url"] { direction: ltr; text-align: right; }
+input[type="time"], input[type="datetime-local"] { direction: ltr; }
+
+/* ---------- הדפסה ---------- */
+@media print {
+  .topbar, .bottomnav, .sidebar, .drawer, .toast { display: none !important; }
+  .main { max-width: none; padding: 0; }
+  .card { break-inside: avoid; box-shadow: none; }
+}

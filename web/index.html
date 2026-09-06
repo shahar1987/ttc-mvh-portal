@@ -41,11 +41,40 @@
     <button class="icon-btn" id="btn-menu" aria-label="תפריט">&#x2630;</button>
   </header>
 
+  <aside class="sidebar" aria-label="ניווט ראשי">
+    <div class="sidebar-brand">
+      <img src="assets/logo-club.png" alt="" onerror="this.style.display='none'">
+      <div class="sb-titles">
+        <strong>מועדון טניס שולחן</strong>
+        <span>מבואות החרמון</span>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <button data-nav="home"><span class="ico">🏠</span>בית</button>
+      <button data-nav="me" class="only-personal"><span class="ico">👤</span>האזור האישי</button>
+      <button data-nav="schedule"><span class="ico">📅</span>לוח אימונים</button>
+      <button data-nav="league"><span class="ico">🏆</span>טבלאות ליגה</button>
+      <button data-nav="news"><span class="ico">📣</span>הודעות ואירועים</button>
+      <button data-nav="coaches"><span class="ico">🧑‍🏫</span>המאמנים שלנו</button>
+      <button data-nav="contact"><span class="ico">📞</span>צור קשר</button>
+      <button data-nav="social"><span class="ico">📱</span>עקבו אחרינו</button>
+      <button data-nav="partners"><span class="ico">🤝</span>שותפים</button>
+      <hr>
+      <button data-nav="publish" class="only-publisher"><span class="ico">✍️</span>הודעה חדשה</button>
+      <button data-nav="admin" class="only-admin"><span class="ico">⚙️</span>ניהול</button>
+      <button data-nav="dashboard" class="only-admin"><span class="ico">📊</span>דשבורד</button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="sb-user"><strong id="sidebar-name"></strong><span class="chip" id="sidebar-role"></span></div>
+      <button id="btn-logout-3">🚪 יציאה</button>
+    </div>
+  </aside>
+
   <main id="main" class="main" tabindex="-1"></main>
 
   <nav class="bottomnav" aria-label="ניווט ראשי">
     <button data-nav="home" class="active"><span class="ico">🏠</span><span>בית</span></button>
-    <button data-nav="me" id="nav-me"><span class="ico">👤</span><span>האזור שלי</span></button>
+    <button data-nav="me" id="nav-me"><span class="ico">👤</span><span>אישי</span></button>
     <button data-nav="schedule"><span class="ico">📅</span><span>אימונים</span></button>
     <button data-nav="league"><span class="ico">🏆</span><span>ליגה</span></button>
     <button data-nav="more"><span class="ico">⋯</span><span>עוד</span></button>

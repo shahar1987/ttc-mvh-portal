@@ -111,6 +111,8 @@
     loading.classList.add('hidden'); loginScreen.classList.add('hidden'); app.classList.remove('hidden');
     $('#drawer-name').textContent = S.claims.name || fmtPhone(S.user.uid);
     $('#drawer-role').textContent = roleLabel(S.claims.role);
+    $('#sidebar-name').textContent = S.claims.name || fmtPhone(S.user.uid);
+    $('#sidebar-role').textContent = roleLabel(S.claims.role);
     $$('.only-personal').forEach(el => el.classList.toggle('hidden', !hasPersonal()));
     $$('.only-admin').forEach(el => el.classList.toggle('hidden', !isAdmin()));
     $$('.only-publisher').forEach(el => el.classList.toggle('hidden', !canPublish()));
@@ -150,6 +152,7 @@
     $('#topbar-title').textContent = TITLES[name] || '';
     const mainFour = ['home', 'me', 'schedule', 'league'];
     $$('.bottomnav button').forEach(b => b.classList.toggle('active', b.dataset.nav === name || (b.dataset.nav === 'more' && !mainFour.includes(name))));
+    $$('.sidebar-nav button').forEach(b => b.classList.toggle('active', b.dataset.nav === name));
     $('#btn-back').hidden = ['home'].includes(name);
     const main = $('#main');
     main.innerHTML = '<div class="empty"><div class="spinner" style="margin:0 auto"></div></div>';
@@ -418,9 +421,9 @@
 
   SCREENS.partners = async () => `<div class="card center"><div class="card-title" style="justify-content:center"><span class="ico">🤝</span>השותפים שלנו</div>
     <p>המועדון פועל בשיתוף:</p>
-    <img src="assets/logo-matnas.png" alt="מתנ״ס אזורי מבואות החרמון" style="max-width:80%;max-height:160px;margin:12px auto;display:block"><p><b>מתנ״ס אזורי מבואות החרמון</b></p>
-    <img src="assets/logo-moatza.png" alt="מועצה אזורית מבואות החרמון" style="max-width:80%;max-height:160px;margin:12px auto;display:block"><p><b>מועצה אזורית מבואות החרמון</b></p>
-    <img src="assets/logo-club.png" alt="" style="max-width:60%;max-height:140px;margin:18px auto 6px;display:block"><p class="muted">${esc(CLUB.fullName)}</p></div>`;
+    <img src="assets/logo-matnas.png" alt="מתנ״ס אזורי מבואות החרמון" style="max-width:70%;max-height:150px;margin:12px auto;display:block" onerror="this.style.display='none'"><p><b>מתנ״ס אזורי מבואות החרמון</b></p>
+    <img src="assets/logo-moatza.png" alt="מועצה אזורית מבואות החרמון" style="max-width:70%;max-height:150px;margin:12px auto;display:block" onerror="this.style.display='none'"><p><b>מועצה אזורית מבואות החרמון</b></p>
+    <img src="assets/logo-club.png" alt="" style="max-width:60%;max-height:170px;margin:18px auto 6px;display:block" onerror="this.style.display='none'"><p class="muted">${esc(CLUB.fullName)}</p></div>`;
 
   SCREENS.more = async () => `<div class="card" style="padding:6px">
     ${[['news', '📣', 'הודעות ואירועים'], ['coaches', '🧑‍🏫', 'המאמנים שלנו'], ['contact', '📞', 'צור קשר'], ['social', '📱', 'עקבו אחרינו'], ['partners', '🤝', 'שותפים'],
@@ -428,7 +431,7 @@
       .map(([k, i, t]) => `<button class="btn" style="justify-content:flex-start;font-size:1.1rem;border-bottom:1px solid var(--line);border-radius:0" data-go="${k}"><span style="font-size:1.4rem">${i}</span>${t}</button>`).join('')}
     <button class="btn" style="justify-content:flex-start;font-size:1.1rem;color:var(--red)" id="btn-logout-2">🚪 יציאה</button></div>
     <p class="center small muted">מחובר: ${esc(S.claims.name || '')} · ${roleLabel(S.claims.role)} · ${esc(fmtPhone(S.user.uid))}</p>`;
-  document.addEventListener('click', e => { if (e.target.id === 'btn-logout-2') $('#btn-logout').click(); });
+  document.addEventListener('click', e => { if (e.target.id === 'btn-logout-2' || e.target.id === 'btn-logout-3') $('#btn-logout').click(); });
 
   // ---------------------------------------------------------------- reminders
   async function openReminder(target, label) {
