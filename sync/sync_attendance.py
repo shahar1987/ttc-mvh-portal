@@ -229,13 +229,21 @@ def main():
     created, linked = [], []
     # מיפוי שם -> מספר TTTM (seed/tttm_players.json); שחקן שהשם שלו תואם מקבל tttmId אוטומטית
     tttm_map = {}
-    try:
+    try:  # קודם כל מהנתונים החיים של TTTM בפורטל (מתעדכן בכל ריצת סקרייפר)
+        for d in dst.collection("tttm/players/items").stream():
+            data = d.to_dict() or {}
+            if data.get("name"):
+                tttm_map[_norm_name(data["name"])] = d.id
+    except Exception as e:  # pragma: no cover
+        print(f"(live tttm players not read: {e})", file=sys.stderr)
+    try:  # גיבוי: קובץ הסנאפשוט שנשמר בריפו
         import json
         here = os.path.dirname(os.path.abspath(__file__))
         for p in json.load(open(os.path.join(here, "..", "seed", "tttm_players.json"), encoding="utf-8")):
-            tttm_map[_norm_name(p["name"])] = p["tttmId"]
+            tttm_map.setdefault(_norm_name(p["name"]), p["tttmId"])
     except Exception as e:  # pragma: no cover
         print(f"(tttm map not loaded: {e})", file=sys.stderr)
+    print(f"tttm name map: {len(tttm_map)}", file=sys.stderr)
     for pid, p in players.items():
         name = p.get("name") or f"{p.get('firstName', '')} {p.get('lastName', '')}".strip()
         doc = {
