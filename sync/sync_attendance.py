@@ -47,6 +47,29 @@ def normalize_phone(raw):
 # אותה לוגיקה כמו באפליקציית הנוכחות: קבוצת מבוגרים לפי דגל מפורש, אחרת לפי שם הקבוצה
 ADULT_RE = re.compile(r"מבוגרים|בוגרים|פרקינסון|סגל|ותיקים")
 
+# מסמכים שנוצרו ב-seed הראשוני ומוחלפים ע"י הנתונים האמיתיים מאפליקציית הנוכחות
+SEED_IDS = {
+    "groups": ["sy-beginners", "sy-advanced", "sy-squad", "rk-kids", "rk-adults", "dafna-adults"],
+    "coaches": ["shahar", "daniel", "tao"],
+    "venues": ["shear-yashuv", "ramat-korazim", "dafna"],
+}
+
+
+def slugify(name):
+    return re.sub(r"[^\w\u0590-\u05ff]+", "-", (name or "").strip()).strip("-")[:60] or "venue"
+
+
+def drop_seed_docs(dst, coll):
+    """מוחק את מסמכי ה-seed הכפולים, רק אחרי שהגיעו נתונים אמיתיים."""
+    n = 0
+    for doc_id in SEED_IDS.get(coll, []):
+        ref = dst.collection(coll).document(doc_id)
+        snap = ref.get()
+        if snap.exists and (snap.to_dict() or {}).get("source") != "attendance-app":
+            ref.delete()
+            n += 1
+    return n
+
 
 def is_adult_group(g):
     if not g:
@@ -95,6 +118,56 @@ def main():
             "updatedAt": now,
         }, merge=True)
     print(f"groups: {len(groups)}", file=sys.stderr)
+
+    # ---- מאמנים: מי שמשויך בפועל לקבוצה, עם האולמות שהוא מאמן בהם
+    src_users = {d.id: d.to_dict() for d in src.collection("users").stream()}
+    coach_venues = {}
+    for g in groups.values():
+        for cid in (g.get("coachIds") or []):
+            coach_venues.setdefault(cid, set())
+            v = (g.get("venue") or g.get("location") or "").strip()
+            if v:
+                coach_venues[cid].add(v)
+    n_coaches = 0
+    for cid, venues_of in coach_venues.items():
+        u = src_users.get(cid)
+        if not u:
+            continue
+        ref = dst.collection("coaches").document(cid)
+        prev = ref.get().to_dict() or {}
+        ref.set({
+            "name": u.get("name") or "",
+            "phone": u.get("phone") or prev.get("phone", ""),
+            "venues": sorted(venues_of),
+            # תמונה ותיאור נשמרים — הם מוזנים ידנית בפורטל
+            "photoUrl": prev.get("photoUrl", ""),
+            "bio": prev.get("bio", ""),
+            "source": "attendance-app",
+            "updatedAt": now,
+        }, merge=True)
+        n_coaches += 1
+    print(f"coaches: {n_coaches}", file=sys.stderr)
+
+    # ---- אולמות: מסמך לכל שם אולם שמופיע בקבוצות (בשביל כתובת וניווט)
+    venue_names = sorted({(g.get("venue") or g.get("location") or "").strip()
+                          for g in groups.values()} - {""})
+    for vname in venue_names:
+        vid = slugify(vname)
+        ref = dst.collection("venues").document(vid)
+        prev = ref.get().to_dict() or {}
+        ref.set({
+            "name": vname,
+            "address": prev.get("address") or vname,   # ניתן לעריכה במסך הניהול
+            "source": "attendance-app",
+            "updatedAt": now,
+        }, merge=True)
+    print(f"venues: {len(venue_names)}", file=sys.stderr)
+
+    # ---- ניקוי הכפילויות מהזריעה הראשונית
+    if groups:
+        removed = {c: drop_seed_docs(dst, c) for c in ("groups", "coaches", "venues")}
+        if any(removed.values()):
+            print(f"seed duplicates removed: {removed}", file=sys.stderr)
 
     # ---- players
     existing = {d.id: d.to_dict() for d in dst.collection("players").stream()}
