@@ -551,3 +551,9 @@ input:focus, select:focus, textarea:focus {
 }
 button:focus-visible, a:focus-visible { outline: 2px solid var(--blue-700); outline-offset: 2px; }
 .avatar .ic { width: 26px; height: 26px; }
+
+/* סרגל עליון: כפתורים בתוך העמודה, בלי גלישה */
+.topbar .icon-btn { width: 46px; height: 46px; display: inline-flex; align-items: center; justify-content: center; justify-self: center; }
+.topbar { padding: 0; }
+/* לוח הנוכחות לא מתנפח במסכים רחבים */
+.cal { max-width: 380px; margin-inline: auto; }
