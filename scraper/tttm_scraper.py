@@ -33,6 +33,7 @@ import os
 import re
 import sys
 import time
+from urllib.parse import quote
 
 import requests
 from bs4 import BeautifulSoup
@@ -40,24 +41,59 @@ from bs4 import BeautifulSoup
 BASE = "https://tttm.co.il"
 CLUB_ID = int(os.environ.get("TTTM_CLUB_ID", "160"))
 CLUB_NAME_HINT = "מבואות חרמון"
-UA = "Mozilla/5.0 (compatible; ttc-mvh-portal-scraper/1.0; +https://github.com/shahar1987/ttc-mvh-portal)"
+# TTTM יושב מאחורי Cloudflare וחוסם User-Agent שנראה כמו בוט (403).
+# לכן שולחים כותרות של דפדפן אמיתי.
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36")
+BROWSER_HEADERS = {
+    "User-Agent": UA,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+    "Sec-Ch-Ua": '"Chromium";v="140", "Not=A?Brand";v="24", "Google Chrome";v="140"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+    "Connection": "keep-alive",
+}
 SESSION = requests.Session()
-SESSION.headers["User-Agent"] = UA
-SESSION.headers["Accept-Language"] = "he-IL,he;q=0.9"
+SESSION.headers.update(BROWSER_HEADERS)
+
+# אופציונלי: אם TTTM חוסם את שרתי GitHub, אפשר להעביר את הבקשות דרך ה-Worker
+# (משתנה סביבה TTTM_PROXY, למשל https://ttc-mvh-login.<שם>.workers.dev/fetch?url=)
+PROXY_PREFIX = os.environ.get("TTTM_PROXY", "").strip()
 
 LAST_MATCHES_PER_PLAYER = 5
 
 
 # ---------------------------------------------------------------- HTTP helpers
-def get(path, retries=3, sleep=1.0):
+def get(path, retries=4, sleep=2.0):
     url = path if path.startswith("http") else BASE + path
+    fetch_url = (PROXY_PREFIX + quote(url, safe="")) if PROXY_PREFIX else url
     last = None
     for i in range(retries):
         try:
-            r = SESSION.get(url, timeout=40)
+            headers = {}
+            if not path.startswith("http") and path != "/":
+                headers["Referer"] = BASE + "/"
+            if "/api/" in path:
+                headers["Accept"] = "application/json, text/plain, */*"
+                headers["Sec-Fetch-Dest"] = "empty"
+                headers["Sec-Fetch-Mode"] = "cors"
+                headers["Sec-Fetch-Site"] = "same-origin"
+                headers["X-Requested-With"] = "XMLHttpRequest"
+            r = SESSION.get(fetch_url, timeout=40, headers=headers)
             if r.status_code == 200:
                 return r
             last = f"HTTP {r.status_code}"
+            if r.status_code in (401, 403, 429, 503):
+                time.sleep(sleep * (i + 2))
         except requests.RequestException as e:  # pragma: no cover
             last = str(e)
         time.sleep(sleep * (i + 1))
