@@ -2,7 +2,8 @@ name: Sync attendance -> portal
 
 on:
   schedule:
-    - cron: '30 20 * * *'   # 23:30 שעון ישראל, אחרי כל האימונים
+    - cron: '*/15 * * * *'  # כל רבע שעה — מספר שמוזן בנוכחות מגיע לפורטל כמעט מיד
+    - cron: '30 20 * * *'   # 23:30 שעון ישראל, אחרי כל האימונים (סנכרון מלא יומי)
   workflow_dispatch:
     inputs:
       auto_add_phones:
