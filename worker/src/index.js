@@ -92,7 +92,9 @@ async function login(request, env) {
   );
   await enforceRateLimit(fs, deviceKey, phone);
 
-  const user = await fs.get(`users/${phone}`);
+  let user = await fs.get(`users/${phone}`);
+  // מספר שהוזן זה עתה באפליקציית הנוכחות — בודקים שם בזמן אמת, בלי לחכות לסנכרון היומי
+  if (!user) user = await provisionFromAttendance(phone, fs, env);
   if (!user) throw new HttpError(404, 'not_registered', 'המספר לא רשום במערכת');
   if (user.disabled === true) throw new HttpError(403, 'disabled', 'הגישה הושעתה');
 
@@ -118,6 +120,56 @@ async function login(request, env) {
   ]).catch(e => console.error('bookkeeping failed', e));
 
   return { token, user: { phone, name: user.name || '', role: claims.role, playerIds: claims.playerIds, canPublish: claims.canPublish } };
+}
+
+// ---------- הצטרפות מיידית: מספר שהוזן באפליקציית הנוכחות ועדיין לא סונכרן ----------
+const ADULT_RE = /מבוגרים|בוגרים|פרקינסון|סגל|ותיקים/;
+
+async function provisionFromAttendance(phone, fsPortal, env) {
+  if (!env.ATTENDANCE_SA) return null;                 // לא הוגדר — מתנהג כמו קודם
+  try {
+    const saAtt = JSON.parse(env.ATTENDANCE_SA);
+    const fsAtt = await firestore(saAtt);
+    const [players, groups] = await Promise.all([fsAtt.list('players'), fsAtt.list('groups')]);
+    const gById = Object.fromEntries(groups.map(g => [g.id, g]));
+
+    const mine = players.filter(p =>
+      p.active !== false && [p.parentPhone, p.phone, p.playerPhone].some(v => normalizePhone(v) === phone));
+    if (!mine.length) return null;
+
+    const isAdult = g => (g && (g.isAdultGroup === true || ADULT_RE.test(g.name || ''))) || false;
+    const first = mine[0];
+    const adult = isAdult(gById[first.groupId]);
+    const name = adult
+      ? (first.name || '').trim()
+      : ((first.parentName || '').trim() || `הורה של ${(first.firstName || (first.name || '').split(' ')[0] || '').trim()}`);
+
+    const doc = {
+      name: name || '',
+      role: adult ? 'player' : 'parent',
+      playerIds: mine.map(p => p.id).slice(0, 10),
+      canPublish: false,
+      source: 'attendance-app',
+      createdAt: new Date().toISOString(),
+    };
+    await fsPortal.set(`users/${phone}`, doc);
+    // מוסיפים את המספר גם לכרטיס השחקן בפורטל, כדי שהנוכחות תיפתח לו מיד
+    await Promise.all(mine.map(async p => {
+      const cur = await fsPortal.get(`players/${p.id}`);
+      const phones = Array.from(new Set([...(cur && cur.phones ? cur.phones : []), phone]));
+      if (cur) return fsPortal.patch(`players/${p.id}`, { phones });
+      // שחקן חדש שנוסף זה עתה בנוכחות — כרטיס בסיסי עד הסנכרון הבא
+      return fsPortal.set(`players/${p.id}`, {
+        name: (p.name || '').trim(),
+        firstName: (p.firstName || (p.name || '').split(' ')[0] || '').trim(),
+        groupId: p.groupId || '', active: true, phones, source: 'attendance-app',
+      });
+    })).catch(e => console.error('link players failed', e));
+    return doc;
+  } catch (e) {
+    console.error('provisionFromAttendance failed', e);
+    return null;
+  }
 }
 
 async function enforceRateLimit(fs, key, phone) {
@@ -263,7 +315,8 @@ async function firestore(sa) {
 
 const cachedTokens = {};
 async function getAccessToken(sa, scope = 'https://www.googleapis.com/auth/datastore') {
-  const cachedToken = cachedTokens[scope];
+  const ck = `${sa.client_email}|${scope}`;          // מפתח נפרד לכל service account
+  const cachedToken = cachedTokens[ck];
   if (cachedToken && cachedToken.exp > Date.now() / 1000 + 60) return cachedToken.token;
   const now = Math.floor(Date.now() / 1000);
   const assertion = await signJwt(sa, {
@@ -276,24 +329,24 @@ async function getAccessToken(sa, scope = 'https://www.googleapis.com/auth/datas
   });
   if (!r.ok) throw new Error(`oauth: ${r.status} ${await r.text()}`);
   const j = await r.json();
-  cachedTokens[scope] = { token: j.access_token, exp: now + (j.expires_in || 3600) };
-  return cachedTokens[scope].token;
+  cachedTokens[ck] = { token: j.access_token, exp: now + (j.expires_in || 3600) };
+  return cachedTokens[ck].token;
 }
 
 // ---------- JWT RS256 with WebCrypto ----------
-let cachedKey = null;
-async function importKey(pem) {
-  if (cachedKey) return cachedKey;
+const cachedKeys = {};
+async function importKey(pem, id) {
+  if (cachedKeys[id]) return cachedKeys[id];
   const b64 = pem.replace(/-----[A-Z ]+-----/g, '').replace(/\s+/g, '');
   const der = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-  cachedKey = await crypto.subtle.importKey('pkcs8', der, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
-  return cachedKey;
+  cachedKeys[id] = await crypto.subtle.importKey('pkcs8', der, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
+  return cachedKeys[id];
 }
 async function signJwt(sa, payload) {
   const header = { alg: 'RS256', typ: 'JWT', kid: sa.private_key_id };
   const enc = o => b64url(new TextEncoder().encode(JSON.stringify(o)));
   const signingInput = `${enc(header)}.${enc(payload)}`;
-  const key = await importKey(sa.private_key);
+  const key = await importKey(sa.private_key, sa.private_key_id || sa.client_email);
   const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(signingInput));
   return `${signingInput}.${b64url(new Uint8Array(sig))}`;
 }
