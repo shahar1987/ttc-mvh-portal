@@ -1,14 +1,18 @@
 /**
  * Login Worker — פורטל מועדון טניס שולחן מבואות החרמון
  *
- * POST /login  { phone }   ->  { token, user }
+ * POST /login  { phone, pin? }   ->  { token, user }
  *
  * זהו "השרת" היחיד במערכת. הוא:
  *   1. מנרמל את מספר הטלפון
  *   2. אוכף הגבלת ניסיונות (5 מספרים שונים מאותו מכשיר ב-10 דקות -> נעילה לשעה)
  *   3. בודק שהמספר קיים ב-/users
- *   4. מנפיק Firebase Custom Token עם claims: role, playerIds, canPublish
+ *   3b. מאמן/מנהל: דורש קוד אישי (PIN) — גורם שני, כי מספר הטלפון לבדו אינו סוד
+ *       (הקוד נשמר כ-hash ב-users/{phone}/private/auth; 5 טעויות -> נעילה לשעה)
+ *   4. מנפיק Firebase Custom Token עם claims: role, playerIds, groupIds, canPublish
  *   5. מעדכן lastLogin / loginCount ומונה כניסות יומי לדשבורד
+ *
+ * POST /set-pin { pin, currentPin? }  (Authorization: Bearer <ID token>) — מאמן/מנהל קובע/מחליף את הקוד שלו
  *
  * רץ ב-Cloudflare Workers (מכסה חינמית: 100,000 בקשות ביום, בלי כרטיס אשראי).
  * POST /push   { announcementId, title, body, audience, groupId }  (Authorization: Bearer <ID token>)
@@ -22,6 +26,11 @@ const IDENTITY_AUD = 'https://identitytoolkit.googleapis.com/google.identity.ide
 const RL_WINDOW_MS = 10 * 60 * 1000;
 const RL_MAX_DISTINCT = 5;
 const RL_LOCK_MS = 60 * 60 * 1000;
+const PIN_MAX_FAILS = 5;                 // טעויות קוד לפני נעילה
+const PIN_FAIL_WINDOW_MS = 15 * 60 * 1000;
+const PIN_RE = /^\d{4,8}$/;
+const STAFF_ROLES = ['coach', 'admin'];
+const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;   // מזהי מסמכים שמגיעים מהלקוח
 
 export default {
   async fetch(request, env) {
@@ -35,6 +44,9 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/push') {
         return json(await push(request, env), 200, cors);
+      }
+      if (request.method === 'POST' && url.pathname === '/set-pin') {
+        return json(await setPin(request, env), 200, cors);
       }
       if (url.pathname === '/health') return json({ ok: true }, 200, cors);
       return json({ error: 'not_found' }, 404, cors);
@@ -98,9 +110,21 @@ async function login(request, env) {
   if (!user) throw new HttpError(404, 'not_registered', 'המספר לא רשום במערכת');
   if (user.disabled === true) throw new HttpError(403, 'disabled', 'הגישה הושעתה');
 
+  const role = STAFF_ROLES.includes(user.role) ? user.role : (user.role || 'member');
+  // ---- גורם שני למאמנים ולמנהל ----
+  if (STAFF_ROLES.includes(role)) await requirePin(fs, phone, body.pin);
+
+  const playerIds = Array.isArray(user.playerIds) ? user.playerIds.filter(id => ID_RE.test(String(id))).slice(0, 10) : [];
+  // הקבוצות של השחקנים שלי — נכנסות לטוקן כדי שחוקי Firestore יוכלו לאכוף "הודעה לקבוצה"
+  const groupIds = Array.from(new Set((await Promise.all(playerIds.map(async id => {
+    const p = await fs.get(`players/${id}`).catch(() => null);
+    return p && p.groupId ? String(p.groupId) : '';
+  }))).filter(Boolean))).slice(0, 10);
+
   const claims = {
-    role: user.role || 'member',
-    playerIds: Array.isArray(user.playerIds) ? user.playerIds.slice(0, 10) : [],
+    role,
+    playerIds,
+    groupIds,
     canPublish: user.canPublish === true,
     name: user.name || '',
   };
@@ -122,6 +146,57 @@ async function login(request, env) {
   return { token, user: { phone, name: user.name || '', role: claims.role, playerIds: claims.playerIds, canPublish: claims.canPublish } };
 }
 
+// ---------- קוד אישי (PIN) למאמנים ולמנהל ----------
+// hash = SHA-256("<phone>:<pin>") — אותה נוסחה גם בממשק הניהול (המנהל קובע קוד ראשוני) וגם ב-/set-pin
+async function pinHash(phone, pin) {
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${phone}:${pin}`));
+  return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function requirePin(fs, phone, pin) {
+  const priv = (await fs.get(`users/${phone}/private/auth`)) || {};
+  if (!priv.pinHash) {
+    // עדיין לא נקבע קוד. אם המנהל הפעיל "חובה קוד לצוות" — אין כניסה עד שייקבע קוד.
+    const sec = (await fs.get('settings/security')) || {};
+    if (sec.requirePin === true) throw new HttpError(403, 'pin_not_set', 'עדיין לא נקבע לך קוד כניסה — פנה למנהל המועדון');
+    return;
+  }
+  const lockPath = `ratelimit/pin_${phone}`;
+  const now = Date.now();
+  const rec = (await fs.get(lockPath)) || {};
+  if (rec.lockedUntil && rec.lockedUntil > now) throw new HttpError(429, 'pin_locked', 'יותר מדי ניסיונות קוד שגויים. נסה שוב בעוד שעה');
+  if (pin === undefined || pin === null || pin === '') throw new HttpError(401, 'pin_required', 'נדרש קוד כניסה');
+  if (!PIN_RE.test(String(pin)) || (await pinHash(phone, String(pin))) !== priv.pinHash) {
+    let fails = (rec.windowStart && now - rec.windowStart < PIN_FAIL_WINDOW_MS) ? (rec.fails || 0) + 1 : 1;
+    const upd = { fails, windowStart: (rec.windowStart && now - rec.windowStart < PIN_FAIL_WINDOW_MS) ? rec.windowStart : now };
+    if (fails >= PIN_MAX_FAILS) upd.lockedUntil = now + RL_LOCK_MS;
+    await fs.set(lockPath, upd);
+    throw new HttpError(403, 'bad_pin', fails >= PIN_MAX_FAILS ? 'יותר מדי ניסיונות. נסה שוב בעוד שעה' : `קוד שגוי (נותרו ${PIN_MAX_FAILS - fails} ניסיונות)`);
+  }
+  if (rec.fails) await fs.del(lockPath).catch(() => {});
+}
+
+// POST /set-pin  Authorization: Bearer <ID token>   { pin, currentPin? }
+async function setPin(request, env) {
+  const sa = JSON.parse(env.FIREBASE_SA);
+  const authz = request.headers.get('Authorization') || '';
+  const claims = await verifyIdToken(authz.replace(/^Bearer\s+/i, ''), sa.project_id);
+  if (!claims || !claims.sub) throw new HttpError(401, 'unauthorized');
+  const phone = normalizePhone(claims.sub);
+  if (!phone) throw new HttpError(401, 'unauthorized');
+  const body = await request.json().catch(() => ({}));
+  if (!PIN_RE.test(String(body.pin || ''))) throw new HttpError(400, 'bad_pin_format', 'הקוד חייב להיות 4 עד 8 ספרות');
+  const fs = await firestore(sa);
+  const user = await fs.get(`users/${phone}`);
+  if (!user || !STAFF_ROLES.includes(user.role)) throw new HttpError(403, 'forbidden', 'קוד כניסה הוא רק למאמנים ולמנהל');
+  const priv = (await fs.get(`users/${phone}/private/auth`)) || {};
+  // החלפת קוד קיים דורשת את הקוד הנוכחי (טוקן גנוב לא מספיק)
+  if (priv.pinHash) await requirePin(fs, phone, body.currentPin);
+  await fs.set(`users/${phone}/private/auth`, { pinHash: await pinHash(phone, String(body.pin)), pinSetAt: new Date().toISOString(), setBy: 'self' });
+  await fs.patch(`users/${phone}`, { pinSet: true }).catch(() => {});
+  return { ok: true };
+}
+
 // ---------- הצטרפות מיידית: מספר שהוזן באפליקציית הנוכחות ועדיין לא סונכרן ----------
 const ADULT_RE = /מבוגרים|בוגרים|פרקינסון|סגל|ותיקים/;
 
@@ -133,9 +208,21 @@ async function provisionFromAttendance(phone, fsPortal, env) {
     const [players, groups] = await Promise.all([fsAtt.list('players'), fsAtt.list('groups')]);
     const gById = Object.fromEntries(groups.map(g => [g.id, g]));
 
+    // מאמן/מנהל שרשום באפליקציית הנוכחות — נכנס גם בלי כרטיס שחקן
+    const staff = (await fsAtt.list('users')).find(u =>
+      normalizePhone(u.phone) === phone && ['coach', 'admin'].includes(String(u.role || '').toLowerCase()));
+
     const mine = players.filter(p =>
       p.active !== false && [p.parentPhone, p.phone, p.playerPhone].some(v => normalizePhone(v) === phone));
-    if (!mine.length) return null;
+
+    if (!mine.length) {
+      if (!staff) return null;
+      const name = String(staff.name || '').includes('@') ? '' : (staff.name || '').trim();
+      const doc = { name, role: 'coach', playerIds: [], canPublish: false,
+                    source: 'attendance-app', createdAt: new Date().toISOString() };
+      await fsPortal.set(`users/${phone}`, doc);
+      return doc;
+    }
 
     const isAdult = g => (g && (g.isAdultGroup === true || ADULT_RE.test(g.name || ''))) || false;
     const first = mine[0];
@@ -146,7 +233,7 @@ async function provisionFromAttendance(phone, fsPortal, env) {
 
     const doc = {
       name: name || '',
-      role: adult ? 'player' : 'parent',
+      role: staff ? 'coach' : (adult ? 'player' : 'parent'),
       playerIds: mine.map(p => p.id).slice(0, 10),
       canPublish: false,
       source: 'attendance-app',
@@ -204,6 +291,11 @@ async function push(request, env) {
   const body = await request.json().catch(() => ({}));
   if (!body.title) throw new HttpError(400, 'bad_request');
   if (claims.role !== 'admin' && body.audience !== 'group') throw new HttpError(403, 'coach_group_only');
+  // מזהים שמגיעים מהלקוח נכנסים לנתיב Firestore — רק תווים בטוחים
+  if (body.announcementId && !ID_RE.test(String(body.announcementId))) throw new HttpError(400, 'bad_id');
+  if (body.groupId && !ID_RE.test(String(body.groupId))) throw new HttpError(400, 'bad_id');
+  if (!['all', 'group', 'players', 'coaches'].includes(body.audience || 'all')) throw new HttpError(400, 'bad_audience');
+  if (body.audience === 'group' && !body.groupId) throw new HttpError(400, 'bad_request');
 
   const fs = await firestore(sa);
   const tokens = await fs.list('pushTokens');
