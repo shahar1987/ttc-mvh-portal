@@ -195,9 +195,13 @@ def main():
             for f in ("photoUrl", "bio"):
                 if not prev.get(f) and old.get(f):
                     prev[f] = old[f]
+        # הטלפון של המאמן מוצג לחברי המועדון במסך "המאמנים שלנו" רק אם המנהל לא סימן "הסתר טלפון".
+        # (מספר הטלפון הוא גם שם המשתמש בכניסה — לכן למאמנים יש קוד PIN בנוסף.)
+        hide_phone = prev.get("hidePhone") is True
         dst.collection("coaches").document(doc_id).set({
             "name": e["name"],
-            "phone": e["phone"] or normalize_phone(prev.get("phone")) or "",   # תמיד בפורמט אחיד 972…
+            "phone": "" if hide_phone else (e["phone"] or normalize_phone(prev.get("phone")) or ""),   # תמיד בפורמט אחיד 972…
+            "hidePhone": hide_phone,
             "venues": sorted(e["venues"]),
             "groupNames": sorted(e["groups"]),
             "photoUrl": prev.get("photoUrl", ""),
@@ -343,8 +347,12 @@ def main():
     print(f"players: {len(players)}", file=sys.stderr)
     if auto_phones:
         print(f"users created: {len(created)}  |  existing users linked: {len(linked)}", file=sys.stderr)
-        for n, label, role in created:
-            print(f"   + 0{n[3:]}  {label}  ({role})", file=sys.stderr)
+        # (ללא שמות/טלפונים בלוג — הלוג ציבורי)
+        by_role = {}
+        for _n, _label, role in created:
+            by_role[role] = by_role.get(role, 0) + 1
+        if by_role:
+            print("   new users by role: " + ", ".join(f"{r}={c}" for r, c in sorted(by_role.items())), file=sys.stderr)
     else:
         print("AUTO_ADD_PHONES=0 — לא נוצרו משתמשים. הפעל את הדגל כדי לייבא טלפונים.", file=sys.stderr)
 
