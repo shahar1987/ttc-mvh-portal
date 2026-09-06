@@ -299,10 +299,10 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .95rem; }
     display: flex; align-items: center; gap: 12px;
     padding: 18px 16px; border-bottom: 2px solid var(--line);
   }
-  .sidebar-brand img { width: 60px; height: auto; flex-shrink: 0; }
+  .sidebar-brand img { width: 52px; height: auto; flex-shrink: 0; }
   .sb-titles { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
-  .sb-titles strong { color: var(--blue); font-size: 1rem; }
-  .sb-titles span { color: var(--muted); font-size: .85rem; }
+  .sb-titles strong { color: var(--blue); font-size: .92rem; white-space: nowrap; }
+  .sb-titles span { color: var(--muted); font-size: .8rem; white-space: nowrap; }
 
   .sidebar-nav { display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; flex: 1; }
   .sidebar-nav button {
