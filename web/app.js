@@ -240,7 +240,14 @@
       $$('[data-pane]', main).forEach(p => p.classList.toggle('hidden', p.dataset.pane !== el.dataset.seg));
     }));
     $$('[data-action]', main).forEach(el => el.addEventListener('click', e => ACTIONS[el.dataset.action]?.(el, e)));
-    $$('[data-filter]', main).forEach(el => el.addEventListener('input', () => { const q = el.value.trim(), np = normalizePhone(q) || '§'; $$(el.dataset.filter + ' li').forEach(li => li.classList.toggle('hidden', !!q && !li.dataset.search.includes(q) && !li.dataset.search.includes(np))); }));
+    $$('[data-filter]', main).forEach(el => el.addEventListener('input', () => {
+      const q = el.value.trim(), qd = q.replace(/\D/g, ''), np = normalizePhone(q) || '§';
+      $$(el.dataset.filter + ' li').forEach(li => {
+        const hay = li.dataset.search, hayDigits = hay.replace(/[^\d ]/g, '');
+        const hit = hay.includes(q) || hay.includes(np) || (qd.length >= 3 && hayDigits.includes(qd));
+        li.classList.toggle('hidden', !!q && !hit);
+      });
+    }));
     $$('form[data-form]', main).forEach(f => f.addEventListener('submit', e => { e.preventDefault(); FORMS[f.dataset.form]?.(f); }));
   }
   const ACTIONS = {}, FORMS = {};
@@ -651,7 +658,7 @@
           <p class="small muted">שורה לכל אדם: <code>טלפון, שם, מזהה-שחקן-או-ריק, סוג</code>. לדוגמה:<br><code>0501234567, רונית כהן, ${players[0]?.id || 'abc123'}, parent</code></p>
           <form data-form="importUsers"><textarea name="csv" placeholder="0501234567, שם, מזהה שחקן, parent"></textarea><button class="btn btn-secondary" type="submit">ייבא</button></form></details></div>
         <div class="card"><div class="card-title"><span class="ico"><svg class="ic" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><use href="#ic-users"/></svg></span>מורשי כניסה (${users.length})</div><input type="search" placeholder="חיפוש לפי שם או טלפון" data-filter="#users-list" style="margin-bottom:10px">
-          <ul class="list" id="users-list">${users.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he')).map(u => `<li class="user-row" data-search="${esc((u.name || '') + ' ' + u.id)}"><div class="info"><div class="n">${esc(u.name || '—')} <span class="chip ${u.role === 'admin' ? 'orange' : u.role === 'coach' ? 'green' : ''}">${roleLabel(u.role)}</span>${u.canPublish ? '<span class="chip green">מפרסם</span>' : ''}</div>
+          <ul class="list" id="users-list">${users.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he')).map(u => `<li class="user-row" data-search="${esc([u.name || '', u.id, '0' + String(u.id).replace(/^972/, ''), fmtPhone(u.id)].join(' '))}"><div class="info"><div class="n">${esc(u.name || '—')} <span class="chip ${u.role === 'admin' ? 'orange' : u.role === 'coach' ? 'green' : ''}">${roleLabel(u.role)}</span>${u.canPublish ? '<span class="chip green">מפרסם</span>' : ''}</div>
             <div class="p">${esc(fmtPhone(u.id))}</div><div class="small muted">${(u.playerIds || []).map(pname).map(esc).join(', ')}${u.lastLogin ? ' · כניסה אחרונה ' + fmtDate(u.lastLogin.slice(0, 10), false) : ' · <b>לא נכנס מעולם</b>'}</div></div>
             ${u.role === 'coach' ? `<button class="btn btn-sm ${u.canPublish ? 'btn-secondary' : 'btn-primary'}" data-action="togglePublish" data-id="${u.id}" data-val="${u.canPublish ? '0' : '1'}" title="רשאי לפרסם הודעות">${u.canPublish ? '🔕' : '✍️'}</button>` : ''}
             ${u.id !== S.user.uid ? `<button class="btn btn-danger btn-sm" data-action="removeUser" data-id="${u.id}">הסר</button>` : ''}</li>`).join('')}</ul></div>`,
@@ -746,7 +753,7 @@
   };
   FORMS.saveCoach = async f => {
     const data = { name: f.name.value.trim(), updatedAt: new Date().toISOString() };
-    if (f.phone) Object.assign(data, { phone: f.phone.value.trim(), photoUrl: f.photoUrl.value.trim(), venues: f.venues.value.split(',').map(s => s.trim()).filter(Boolean), bio: f.bio.value.trim() });
+    if (f.phone) Object.assign(data, { phone: normalizePhone(f.phone.value) || f.phone.value.trim(), photoUrl: f.photoUrl.value.trim(), venues: f.venues.value.split(',').map(s => s.trim()).filter(Boolean), bio: f.bio.value.trim() });
     if (f.id.value) await db.doc('coaches/' + f.id.value).update(data); else await db.collection('coaches').add({ ...data, venues: [], createdAt: data.updatedAt });
     invalidate('coaches'); toast('נשמר'); route();
   };
