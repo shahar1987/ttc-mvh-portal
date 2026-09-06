@@ -1,0 +1,46 @@
+name: Seed portal data
+
+# זריעה ראשונית: אולמות, מאמנים, קבוצות, ומשתמש מנהל.
+# מריצים ידנית פעם אחת (Actions -> Seed portal data -> Run workflow).
+# בטוח להרצה חוזרת: לא דורס מסמכים שכבר קיימים.
+
+on:
+  workflow_dispatch:
+    inputs:
+      admin_phone:
+        description: 'טלפון המנהל'
+        required: true
+        default: '0504999149'
+      admin_name:
+        description: 'שם המנהל'
+        required: true
+        default: 'שחר גילעד'
+      with_players:
+        description: 'ליצור גם כרטיסי שחקנים לפי רשימת TTTM (לא נדרש אם משתמשים בסנכרון מאפליקציית הנוכחות)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install google-cloud-firestore
+      - run: echo '${{ secrets.FIREBASE_SA }}' > /tmp/sa.json
+      - name: Seed
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
+          ADMIN_PHONE: ${{ inputs.admin_phone }}
+          ADMIN_NAME: ${{ inputs.admin_name }}
+          WITH_PLAYERS: ${{ inputs.with_players }}
+        run: |
+          EXTRA=""
+          if [ "$WITH_PLAYERS" = "true" ]; then EXTRA="--with-players"; fi
+          python seed/seed.py --admin "$ADMIN_PHONE" --name "$ADMIN_NAME" $EXTRA
