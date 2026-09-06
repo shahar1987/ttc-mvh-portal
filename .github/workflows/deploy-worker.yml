@@ -1,0 +1,48 @@
+name: Deploy login Worker (Cloudflare)
+
+# פורס את worker/src/index.js ל-Cloudflare בכל שינוי בתיקיית worker/ (או ידנית).
+# דורש שני סודות ב-GitHub (Settings -> Secrets -> Actions), שאתה מוסיף בעצמך:
+#   CLOUDFLARE_API_TOKEN   — טוקן עם הרשאת "Workers Scripts: Edit" (Cloudflare -> My Profile -> API Tokens -> "Edit Cloudflare Workers")
+#   CLOUDFLARE_ACCOUNT_ID  — מזהה החשבון (מופיע בצד ימין בדף Workers & Pages)
+# ה-secrets של ה-Worker עצמו (FIREBASE_SA, ATTENDANCE_SA) נשארים ב-Cloudflare ולא נוגעים בהם כאן.
+
+on:
+  push:
+    branches: [main]
+    paths: ['worker/**', '.github/workflows/deploy-worker.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check secrets
+        id: check
+        env:
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          HAS_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+        run: |
+          if [ "$HAS_TOKEN" != "true" ] || [ "$HAS_ACCOUNT" != "true" ]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID לא הוגדרו — ה-Worker לא נפרס. הוסף אותם ב-Settings -> Secrets -> Actions והרץ שוב."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Syntax check
+        run: node --check worker/src/index.js
+
+      - name: Deploy with wrangler
+        if: steps.check.outputs.ready == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          command: deploy

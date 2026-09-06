@@ -24,9 +24,14 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install google-cloud-firestore
-      - run: |
-          echo '${{ secrets.FIREBASE_SA }}' > /tmp/portal-sa.json
-          echo '${{ secrets.ATTENDANCE_SA }}' > /tmp/attendance-sa.json
+      - name: Write service accounts
+        env:
+          FIREBASE_SA_JSON: ${{ secrets.FIREBASE_SA }}
+          ATTENDANCE_SA_JSON: ${{ secrets.ATTENDANCE_SA }}
+        run: |
+          umask 077
+          printf '%s' "$FIREBASE_SA_JSON" > /tmp/portal-sa.json
+          printf '%s' "$ATTENDANCE_SA_JSON" > /tmp/attendance-sa.json
       - name: Sync
         env:
           PORTAL_SA: /tmp/portal-sa.json
