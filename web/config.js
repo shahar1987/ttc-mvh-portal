@@ -11,7 +11,7 @@ window.PORTAL_CONFIG = {
   // 2) Firebase Console -> Project settings -> Cloud Messaging -> Web Push certificates -> Key pair
   vapidKey: "BNsbFrCidiEhI9yzyYLdeEWWaZ4uD0Oe_BwZYfXS4533qpSDeMyuH83O3tD90l9D85k_3Hyf2olXHBX0WWwQ6cE",
   // 3) כתובת ה-Worker אחרי  npx wrangler deploy   (למשל https://ttc-mvh-login.<account>.workers.dev)
-  loginUrl: "https://ttc-mvh-login.PASTE_ACCOUNT.workers.dev",
+  loginUrl: "https://ttc-mvh-login.shahar1987.workers.dev",
 
   // ===== פרטי המועדון (אפשר לערוך גם ממסך הניהול -> settings/club) =====
   club: {
