@@ -55,6 +55,7 @@ def put_if_missing(db, coll, items):
         if not ref.get().exists:
             data = {k: v for k, v in it.items() if k != "id"}
             data["createdAt"] = NOW
+            data["source"] = "seed"
             ref.set(data)
             n += 1
     print(f"{coll}: {n} created")
@@ -65,12 +66,17 @@ def main():
     ap.add_argument("--admin", required=True, help="מספר הטלפון של המנהל")
     ap.add_argument("--name", default="מנהל המועדון")
     ap.add_argument("--with-players", action="store_true", help="ליצור גם כרטיסי שחקנים מ-tttm_players.json (אם לא משתמשים בסנכרון מאפליקציית הנוכחות)")
+    ap.add_argument("--with-club-data", action="store_true",
+                    help="ליצור אולמות/מאמנים/קבוצות לדוגמה. מיותר כשמסנכרנים מאפליקציית הנוכחות — היא מקור האמת.")
     args = ap.parse_args()
     db = firestore.Client()
 
-    put_if_missing(db, "venues", VENUES)
-    put_if_missing(db, "coaches", COACHES)
-    put_if_missing(db, "groups", GROUPS)
+    if args.with_club_data:
+        put_if_missing(db, "venues", VENUES)
+        put_if_missing(db, "coaches", COACHES)
+        put_if_missing(db, "groups", GROUPS)
+    else:
+        print("skipping venues/coaches/groups (use --with-club-data if there is no attendance-app sync)")
     db.collection("settings").document("club").set({"seededAt": NOW}, merge=True)
 
     phone = normalize_phone(args.admin)
