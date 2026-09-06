@@ -188,19 +188,20 @@ def main():
 
     # ---- גישה לפורטל לכל מי שרשום כמאמן/מנהל באפליקציית הנוכחות (גם בלי כרטיס שחקן)
     staff_users = 0
+    staff_no_phone = []
     for uid, u in src_users.items():
         role_src = (u.get("role") or "").strip().lower()
-        if role_src not in ("coach", "admin"):
-            continue
+        portal_role = "coach" if role_src in ("coach", "admin") else "member"
         ph = normalize_phone(u.get("phone"))
         if not ph:
+            staff_no_phone.append(display_name(u) or uid)
             continue
         nm = display_name(u) or people.get(coach_key.get(uid, ""), {}).get("name", "")
         uref = dst.collection("users").document(ph)
         snap = uref.get()
         if not snap.exists:
             # תמיד נפתח כמאמן — שדרוג למנהל נעשה ידנית ממסך הניהול
-            uref.set({"name": nm, "role": "coach", "playerIds": [], "canPublish": False,
+            uref.set({"name": nm, "role": portal_role, "playerIds": [], "canPublish": False,
                       "createdAt": now, "createdBy": "sync-staff"})
             staff_users += 1
         else:
@@ -208,8 +209,8 @@ def main():
             upd = {}
             if not cur.get("name") and nm:
                 upd["name"] = nm
-            if cur.get("role") in (None, "", "member"):     # לא מורידים תפקיד קיים
-                upd["role"] = "coach"
+            if portal_role == "coach" and cur.get("role") in (None, "", "member"):
+                upd["role"] = "coach"                       # לא מורידים תפקיד קיים
             if upd:
                 uref.update(upd)
     print(f"staff users granted access: {staff_users}", file=sys.stderr)
@@ -368,6 +369,55 @@ def main():
             batch = dst.batch()
     batch.commit()
     print(f"attendance summaries written: {count}", file=sys.stderr)
+
+    # ---- דוח מצב סנכרון: מוצג במסך הניהול כדי שרואים שהמערכות מיושרות
+    portal_users = {d.id: (d.to_dict() or {}) for d in dst.collection("users").stream()}
+    people_phones, no_phone_players = set(), []
+    for pid, p in players.items():
+        if p.get("active", True) is False:
+            continue
+        phs = [normalize_phone(x) for x in (p.get("parentPhone"), p.get("phone"), p.get("parentPhone2"))]
+        phs = [x for x in phs if x]
+        if phs:
+            people_phones.update(phs)
+        else:
+            no_phone_players.append(p.get("name") or pid)
+    for u in src_users.values():
+        ph = normalize_phone(u.get("phone"))
+        if ph:
+            people_phones.add(ph)
+    missing_access = sorted(people_phones - set(portal_users))
+    no_group = sorted((p.get("name") or pid) for pid, p in players.items()
+                      if p.get("active", True) is not False and not p.get("groupId"))
+    no_venue = sorted(g.get("name", "") for g in groups.values()
+                      if not (g.get("venue") or g.get("location")))
+    no_coach = sorted(g.get("name", "") for gid, g in groups.items()
+                      if not [c for c in (g.get("coachIds") or []) if c in coach_doc_id])
+
+    dst.collection("meta").document("sync").set({
+        "lastRun": now,
+        "counts": {
+            "groups": len(groups),
+            "players": len([1 for p in players.values() if p.get("active", True) is not False]),
+            "coaches": len(keep),
+            "attendanceUsers": len(src_users),
+            "portalUsers": len(portal_users),
+            "withAccess": len(people_phones & set(portal_users)),
+            "attendanceRecords": n,
+        },
+        "warnings": {
+            "peopleWithoutAccess": missing_access[:50],
+            "playersWithoutPhone": sorted(no_phone_players)[:50],
+            "playersWithoutGroup": no_group[:50],
+            "groupsWithoutVenue": [x for x in no_venue if x][:20],
+            "groupsWithoutCoach": [x for x in no_coach if x][:20],
+            "staffWithoutPhone": sorted(staff_no_phone)[:20],
+        },
+        "autoAddPhones": auto_phones,
+    })
+    print(f"sync report: {len(people_phones)} people in attendance app, "
+          f"{len(people_phones & set(portal_users))} of them have portal access, "
+          f"{len(missing_access)} missing", file=sys.stderr)
 
 
 if __name__ == "__main__":
