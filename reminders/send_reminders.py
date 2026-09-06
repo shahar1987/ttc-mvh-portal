@@ -10,6 +10,7 @@
 או היום = תאריך (sameDay) ועדיין לא נשלח -> שולח ומסמן.
 משחק שנדחה ב-TTTM מקבל תאריך חדש, ולכן התזכורת "נדלקת" שוב אוטומטית.
 """
+import argparse
 import datetime as dt
 import os
 import smtplib
@@ -19,8 +20,8 @@ from email.mime.text import MIMEText
 
 from google.cloud import firestore
 
-GMAIL_USER = os.environ["GMAIL_USER"]
-GMAIL_APP_PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
+GMAIL_USER = os.environ.get("GMAIL_USER", "")
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 PORTAL_URL = os.environ.get("PORTAL_URL", "https://shahar1987.github.io/ttc-mvh-portal/")
 CLUB = "מועדון טניס שולחן מבואות החרמון"
 HEB_DAYS = ["שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת", "ראשון"]
@@ -53,6 +54,11 @@ def build_email(m, team, timing, unsub):
     return subj, html
 
 
+def require_credentials():
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        sys.exit("חסרים GMAIL_USER / GMAIL_APP_PASSWORD ב-Secrets של הריפו — בלי זה אי אפשר לשלוח מייל.")
+
+
 def send(to, subj, html):
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subj
@@ -65,8 +71,30 @@ def send(to, subj, html):
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dry-run", action="store_true", help="לא שולח — רק מדפיס מה היה נשלח ומתי")
+    ap.add_argument("--test", metavar="EMAIL", help="שולח מייל בדיקה אחד לכתובת הזו על המשחק הקרוב")
+    args = ap.parse_args()
+
     db = firestore.Client()
     today = dt.date.today()
+
+    if args.test:
+        require_credentials()
+        matches = {d.id: d.to_dict() for d in db.collection("tttm").document("matches").collection("items").stream()}
+        teams = {d.id: d.to_dict() for d in db.collection("tttm").document("teams").collection("items").stream()}
+        nxt = sorted((m for m in matches.values() if m.get("date") and not m.get("played")),
+                     key=lambda m: m["date"])
+        if not nxt:
+            sys.exit("אין משחק עתידי במערכת לשליחת בדיקה")
+        m = nxt[0]
+        subj, html = build_email(m, teams.get(m.get("ourTeamId")), "week", PORTAL_URL)
+        send(args.test, "[בדיקה] " + subj, html)
+        print(f"מייל בדיקה נשלח אל {args.test} על המשחק {m['homeName']} נגד {m['awayName']} ({m['date']})", file=sys.stderr)
+        return
+
+    if not args.dry_run:
+        require_credentials()
     matches = {d.id: d.to_dict() for d in db.collection("tttm").document("matches").collection("items").stream()}
     teams = {d.id: d.to_dict() for d in db.collection("tttm").document("teams").collection("items").stream()}
     sent = 0
@@ -90,6 +118,10 @@ def main():
                 if not due or key in already:
                     continue
                 subj, html = build_email(m, teams.get(m.get("ourTeamId")), timing, unsub)
+                if args.dry_run:
+                    print(f"[dry-run] היה נשלח עכשיו: {rem['email']} <- {key} ({m['date']})", file=sys.stderr)
+                    sent += 1
+                    continue
                 try:
                     send(rem["email"], subj, html)
                     already.add(key)
@@ -97,9 +129,19 @@ def main():
                     print(f"sent {timing} -> {rem['email']} for {key}", file=sys.stderr)
                 except Exception as e:  # pragma: no cover
                     print(f"FAILED {rem['email']} {key}: {e}", file=sys.stderr)
+        if args.dry_run:
+            for m in cand:
+                if m.get("date") and not m.get("played"):
+                    md = dt.date.fromisoformat(m["date"])
+                    for timing in rem.get("timing") or []:
+                        when = md - dt.timedelta(days=7) if timing == "week" else md
+                        if when >= today and f"{m['matchId']}:{timing}" not in already:
+                            print(f"[dry-run] מתוכנן: {rem['email']} <- {m['homeName']} נגד {m['awayName']} "
+                                  f"({m['date']}) — יישלח ב-{when}", file=sys.stderr)
+            continue
         if already != set(rem.get("sentFor") or []):
             r.reference.update({"sentFor": sorted(already), "lastSentAt": dt.datetime.now(dt.timezone.utc).isoformat()})
-    print(f"total sent: {sent}", file=sys.stderr)
+    print(f"{'[dry-run] היו נשלחים' if args.dry_run else 'נשלחו'} עכשיו: {sent}", file=sys.stderr)
 
 
 if __name__ == "__main__":
