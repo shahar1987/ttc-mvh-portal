@@ -102,7 +102,8 @@ def main():
     # ---- groups (כולל שמות פרטיים של חברי הקבוצה — לתצוגת "הקבוצה שלי" בלי לחשוף מסמכי שחקנים)
     groups = {d.id: d.to_dict() for d in src.collection("groups").stream()}
     players = {d.id: d.to_dict() for d in src.collection("players").stream()}
-    for gid, g in groups.items():
+    def write_groups(coach_doc_id):
+      for gid, g in groups.items():
         members = [{"id": pid, "firstName": (p.get("firstName") or (p.get("name") or "").split(" ")[0])}
                    for pid, p in players.items() if p.get("groupId") == gid and p.get("active", True) is not False]
         dst.collection("groups").document(gid).set({
@@ -111,51 +112,96 @@ def main():
             "days": g.get("days") or g.get("groupDays") or [],
             "startTime": g.get("startTime", ""),
             "endTime": g.get("endTime", ""),
-            "coachIds": g.get("coachIds") or [],
+            "coachIds": sorted({coach_doc_id[c] for c in (g.get("coachIds") or []) if c in coach_doc_id}),
             "memberNames": sorted(members, key=lambda m: m["firstName"]),
             "isAdultGroup": is_adult_group(g),
             "source": "attendance-app",
             "updatedAt": now,
         }, merge=True)
+
+    write_groups({})                 # כתיבה ראשונה כדי שהמאמנים ייגזרו מהקבוצות
     print(f"groups: {len(groups)}", file=sys.stderr)
 
-    # ---- מאמנים: מי שמשויך בפועל לקבוצה, עם האולמות שהוא מאמן בהם
+    # ---- מאמנים: מאוחדים לפי אדם (באפליקציית הנוכחות יש כמה חשבונות לאותו מאמן)
     src_users = {d.id: d.to_dict() for d in src.collection("users").stream()}
-    coach_venues = {}
-    for g in groups.values():
+
+    def display_name(u):
+        n = (u.get("name") or "").strip()
+        return "" if "@" in n else n          # שם שהוא כתובת מייל אינו שם תצוגה
+
+    people = {}          # key -> {name, phone, venues:set, groups:set, ids:set}
+    coach_key = {}       # attendance user id -> key
+    for gid, g in groups.items():
+        venue = (g.get("venue") or g.get("location") or "").strip()
+        gname = (g.get("name") or "").strip()
         for cid in (g.get("coachIds") or []):
-            coach_venues.setdefault(cid, set())
-            v = (g.get("venue") or g.get("location") or "").strip()
-            if v:
-                coach_venues[cid].add(v)
-    n_coaches = 0
-    for cid, venues_of in coach_venues.items():
-        u = src_users.get(cid)
-        if not u:
-            continue
-        ref = dst.collection("coaches").document(cid)
-        prev = ref.get().to_dict() or {}
-        # באפליקציית הנוכחות יש חשבונות ששמם הוא כתובת מייל — לא שם תצוגה.
-        # במקרה כזה משאירים את השם שהוזן ידנית בפורטל, וכך העריכה הידנית לא נדרסת.
-        src_name = (u.get("name") or "").strip()
-        if "@" in src_name:
-            src_name = ""
-        prev_name = (prev.get("name") or "").strip()
-        if "@" in prev_name:
-            prev_name = ""
-        display_name = src_name or prev_name or (u.get("email") or "").split("@")[0]
-        ref.set({
-            "name": display_name,
-            "phone": u.get("phone") or prev.get("phone", ""),
-            "venues": sorted(venues_of),
-            # תמונה ותיאור נשמרים — הם מוזנים ידנית בפורטל
+            u = src_users.get(cid)
+            if not u:
+                continue
+            nm, ph = display_name(u), normalize_phone(u.get("phone"))
+            key = ph or _norm_name(nm)        # אותו טלפון = אותו אדם
+            if not key:
+                continue
+            e = people.setdefault(key, {"name": "", "phone": ph or "", "venues": set(),
+                                        "groups": set(), "ids": set()})
+            if nm and (not e["name"] or len(nm) > len(e["name"])):
+                e["name"] = nm
+            if venue:
+                e["venues"].add(venue)
+            if gname:
+                e["groups"].add(gname)        # מאמן אחד יכול לאמן כמה קבוצות
+            e["ids"].add(cid)
+            coach_key[cid] = key
+
+    # מסמכי מאמנים קיימים בפורטל (כולל כאלה שנוצרו ידנית או בזריעה) — לפי אותו מפתח אדם
+    existing = {d.id: (d.to_dict() or {}) for d in dst.collection("coaches").stream()}
+    by_key = {}
+    for did, data in existing.items():
+        k = normalize_phone(data.get("phone")) or _norm_name(data.get("name") or "")
+        if k:
+            by_key.setdefault(k, []).append(did)
+
+    coach_doc_id = {}
+    for key, e in people.items():
+        if not e["name"]:
+            continue                          # בלי שם אין מה להציג
+        doc_id = slugify(e["name"])
+        for cid in e["ids"]:
+            coach_doc_id[cid] = doc_id
+        # תמונה ותיאור מוזנים ידנית בפורטל — שומרים אותם גם ממסמך ישן של אותו אדם
+        prev = dict(existing.get(doc_id) or {})
+        for did in by_key.get(key, []) + by_key.get(_norm_name(e["name"]), []):
+            old = existing.get(did) or {}
+            for f in ("photoUrl", "bio"):
+                if not prev.get(f) and old.get(f):
+                    prev[f] = old[f]
+        dst.collection("coaches").document(doc_id).set({
+            "name": e["name"],
+            "phone": e["phone"] or prev.get("phone", ""),
+            "venues": sorted(e["venues"]),
+            "groupNames": sorted(e["groups"]),
             "photoUrl": prev.get("photoUrl", ""),
             "bio": prev.get("bio", ""),
             "source": "attendance-app",
             "updatedAt": now,
         }, merge=True)
-        n_coaches += 1
-    print(f"coaches: {n_coaches}", file=sys.stderr)
+
+    keep = set(coach_doc_id.values())
+    # כפילויות: כל מסמך ישן של אדם שכבר נכתב מחדש (לפי טלפון או שם) — נמחק
+    merged_keys = {k for k, e in people.items() if e["name"]}
+    merged_keys |= {_norm_name(e["name"]) for e in people.values() if e["name"]}
+    stale = 0
+    for did, data in existing.items():
+        if did in keep:
+            continue
+        k_phone = normalize_phone(data.get("phone"))
+        k_name = _norm_name(data.get("name") or "")
+        if data.get("source") == "attendance-app" or k_phone in merged_keys or (k_name and k_name in merged_keys):
+            dst.collection("coaches").document(did).delete()
+            stale += 1
+    print(f"coaches: {len(keep)} (merged from {len(coach_key)} accounts, removed {stale} stale)", file=sys.stderr)
+
+    write_groups(coach_doc_id)       # כתיבה חוזרת עם מזהי המאמנים המאוחדים
 
     # ---- אולמות: מסמך לכל שם אולם שמופיע בקבוצות (בשביל כתובת וניווט)
     venue_names = sorted({(g.get("venue") or g.get("location") or "").strip()
