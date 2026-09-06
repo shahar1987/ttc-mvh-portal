@@ -4,6 +4,15 @@ on:
   schedule:
     - cron: '0 4 * * *'     # 07:00 שעון ישראל בקיץ (06:00 בחורף)
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'מצב הרצה'
+        type: choice
+        default: dry-run
+        options: [dry-run, send, test]
+      test_email:
+        description: 'למצב test בלבד — לאן לשלוח מייל בדיקה'
+        default: ''
 
 permissions:
   contents: read
@@ -25,4 +34,11 @@ jobs:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           PORTAL_URL: ${{ vars.PORTAL_URL }}
-        run: python reminders/send_reminders.py
+        run: |
+          MODE="${{ inputs.mode }}"
+          if [ -z "$MODE" ]; then MODE="send"; fi          # הרצה מתוזמנת = שליחה אמיתית
+          case "$MODE" in
+            dry-run) python reminders/send_reminders.py --dry-run ;;
+            test)    python reminders/send_reminders.py --test "${{ inputs.test_email }}" ;;
+            *)       python reminders/send_reminders.py ;;
+          esac
