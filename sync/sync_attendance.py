@@ -186,6 +186,34 @@ def main():
             "updatedAt": now,
         }, merge=True)
 
+    # ---- גישה לפורטל לכל מי שרשום כמאמן/מנהל באפליקציית הנוכחות (גם בלי כרטיס שחקן)
+    staff_users = 0
+    for uid, u in src_users.items():
+        role_src = (u.get("role") or "").strip().lower()
+        if role_src not in ("coach", "admin"):
+            continue
+        ph = normalize_phone(u.get("phone"))
+        if not ph:
+            continue
+        nm = display_name(u) or people.get(coach_key.get(uid, ""), {}).get("name", "")
+        uref = dst.collection("users").document(ph)
+        snap = uref.get()
+        if not snap.exists:
+            # תמיד נפתח כמאמן — שדרוג למנהל נעשה ידנית ממסך הניהול
+            uref.set({"name": nm, "role": "coach", "playerIds": [], "canPublish": False,
+                      "createdAt": now, "createdBy": "sync-staff"})
+            staff_users += 1
+        else:
+            cur = snap.to_dict() or {}
+            upd = {}
+            if not cur.get("name") and nm:
+                upd["name"] = nm
+            if cur.get("role") in (None, "", "member"):     # לא מורידים תפקיד קיים
+                upd["role"] = "coach"
+            if upd:
+                uref.update(upd)
+    print(f"staff users granted access: {staff_users}", file=sys.stderr)
+
     keep = set(coach_doc_id.values())
     # כפילויות: כל מסמך ישן של אדם שכבר נכתב מחדש (לפי טלפון או שם) — נמחק
     merged_keys = {k for k, e in people.items() if e["name"]}
