@@ -9,7 +9,8 @@ service cloud.firestore {
     // "פעיל" = מחובר וגם עדיין רשום ולא מושעה. כך ביטול גישה (מחיקה/השעיה בניהול) תופס מיד,
     // גם אם למכשיר יש עדיין session פתוח.
     function me() { return get(/databases/$(database)/documents/users/$(myPhone())).data; }
-    function active() { return signedIn() && me().disabled != true; }
+    // get('disabled', false): גישה לשדה שלא קיים במסמך זורקת שגיאה בחוקים — לכן ברירת מחדל
+    function active() { return signedIn() && me().get('disabled', false) != true; }
     function role() { return active() ? request.auth.token.role : null; }
     function isAdmin() { return role() == 'admin'; }
     function isCoach() { return role() == 'coach' || isAdmin(); }
